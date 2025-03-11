@@ -18,7 +18,9 @@ let package = Package(
             targets: ["AmplitudeCore"]),
     ],
     targets: [
-        .target(name: "AmplitudeCore"),
+        .target(
+            name: "AmplitudeCore",
+            resources: [.process("PrivacyInfo.xcprivacy")]),
         .testTarget(
             name: "AmplitudeCoreTests",
             dependencies: ["AmplitudeCore"])
