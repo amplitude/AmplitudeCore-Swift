@@ -6,7 +6,7 @@
 //
 
 @objc(AMPServerZone)
-public enum ServerZone: Int {
+public enum ServerZone: Int, Sendable {
     case US
     case EU
 

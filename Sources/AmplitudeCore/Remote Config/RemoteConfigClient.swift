@@ -81,7 +81,7 @@ public actor RemoteConfigClient: NSObject {
     private let queue = DispatchQueue(label: "com.amplitude.sessionreplay.remoteconfig", target: .global())
     private let jsonDecoder = JSONDecoder()
     private let storage: RemoteConfigStorage
-    private let logger: Logger
+    private let logger: CoreLogger
 
     private var fetchLocalTask: Task<RemoteConfigInfo, Error>
     private var fetchRemoteTask: Task<RemoteConfigInfo, Error>
@@ -90,7 +90,7 @@ public actor RemoteConfigClient: NSObject {
     public init(apiKey: String,
                 serverZone: ServerZone,
                 instanceName: String? = nil,
-                logger: Logger) {
+                logger: CoreLogger) {
         let serverURL: String
         switch serverZone {
         case .US:
@@ -106,7 +106,7 @@ public actor RemoteConfigClient: NSObject {
 
     init(apiKey: String,
          serverUrl: String,
-         logger: Logger = ConsoleLogger(),
+         logger: CoreLogger = OSLogger(),
          storage: RemoteConfigStorage = RemoteConfigUserDefaultsStorage(),
          urlSessionConfiguration: URLSessionConfiguration = .ephemeral) {
         self.apiKey = apiKey
