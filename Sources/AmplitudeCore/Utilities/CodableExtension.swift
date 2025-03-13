@@ -184,7 +184,7 @@ extension UnkeyedEncodingContainer {
 
 extension KeyedEncodingContainer {
 
-    mutating func encodeAny(_ value: Any?, forKey key: KeyedEncodingContainer<K>.Key) throws {
+    mutating public func encodeAny(_ value: Any?, forKey key: KeyedEncodingContainer<K>.Key) throws {
         guard let value = value else {
             return
         }
