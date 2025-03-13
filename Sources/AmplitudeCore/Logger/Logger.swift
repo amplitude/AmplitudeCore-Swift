@@ -5,6 +5,8 @@
 //  Created by Chris Leonavicius on 1/29/25.
 //
 
+import Foundation
+
 @objc(AMPLogLevel)
 public enum LogLevelEnum: Int {
     case OFF
@@ -14,7 +16,8 @@ public enum LogLevelEnum: Int {
     case DEBUG
 }
 
-public protocol Logger {
+@objc
+public protocol Logger: AnyObject {
     func error(message: String)
     func warn(message: String)
     func log(message: String)

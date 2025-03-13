@@ -7,7 +7,7 @@
 
 import OSLog
 
-public class ConsoleLogger: Logger {
+public final class ConsoleLogger: Logger, @unchecked Sendable {
 
     public var logLevel: LogLevelEnum
     private var logger: OSLog
