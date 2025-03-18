@@ -140,7 +140,7 @@ public actor RemoteConfigClient: NSObject {
      - Parameters:
         - key: A String containing a series of period delimited keys to filter the returned config. Ie, {a: {b: {c: ...}}} would return {b: {c: ...} for "a" or {c: ...} for "a.b"
         - deliveryMode: How the initial callback is sent. See ``RemoteConfigClient/DeliveryMode`` for more details.
-        - callback: A block that will
+        - callback: A block that will be called when remote config is fetched.
      - Returns: A token that can be used to unsubscribe from updates
      */
     @discardableResult
@@ -275,7 +275,7 @@ public actor RemoteConfigClient: NSObject {
                 case .all:
                     break
                 case .waitForRemote:
-                    // Wait until the initial callback from registerForUpdates is fired
+                    // Wait until the initial callback from subscribe is fired
                     guard callback.lastCallbackTime == nil else {
                         continue
                     }
