@@ -1,0 +1,22 @@
+name: Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      dryRun:
+        description: "Do a dry run to preview instead of a real release"
+        required: true
+        default: "true"
+
+jobs:
+  authorize:
+    name: Authorize
+    runs-on: macos-14
+    steps:
+      - name: ${{ github.actor }} permission check to do a release
+        uses: octokit/request-action@v2.x
+        with:
+          route: GET /repos/:repository/collaborators/${{ github.actor }}
+          repository: ${{ github.repository }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
