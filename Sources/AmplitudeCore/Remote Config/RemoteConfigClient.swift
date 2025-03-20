@@ -7,6 +7,11 @@
 
 import Foundation
 
+protocol RemoteConfigStorage: Sendable {
+    func fetchConfig() async throws -> RemoteConfigClient.RemoteConfigInfo?
+    func setConfig(_ config: RemoteConfigClient.RemoteConfigInfo?) async throws
+}
+
 public actor RemoteConfigClient: NSObject {
 
     public enum DeliveryMode: Sendable {
@@ -26,6 +31,7 @@ public actor RemoteConfigClient: NSObject {
         case notInCache
         case invalidServerURL
         case badResponse
+        case preInit
     }
 
     private struct Config {
@@ -64,11 +70,6 @@ public actor RemoteConfigClient: NSObject {
         let lastFetch: Date
     }
 
-    protocol Storage: Sendable {
-        func fetchConfig() async throws -> RemoteConfigInfo?
-        func setConfig(_ config: RemoteConfigInfo?) async throws
-    }
-
     public typealias RemoteConfig = [String: Sendable]
     public typealias RemoteConfigCallback = @Sendable (RemoteConfig?, Source, Date?) -> Void
 
@@ -77,7 +78,7 @@ public actor RemoteConfigClient: NSObject {
     private let urlSession: URLSession
     private let queue = DispatchQueue(label: "com.amplitude.sessionreplay.remoteconfig", target: .global())
     private let jsonDecoder = JSONDecoder()
-    private let storage: Storage
+    private let storage: RemoteConfigStorage
     private let logger: Logger
 
     private var fetchLocalTask: Task<RemoteConfigInfo, Error>
@@ -104,13 +105,25 @@ public actor RemoteConfigClient: NSObject {
     init(apiKey: String,
          serverUrl: String,
          logger: Logger = ConsoleLogger(),
-         storage: Storage = RemoteConfigUserDefaultsStorage(),
+         storage: RemoteConfigStorage = RemoteConfigUserDefaultsStorage(),
          urlSessionConfiguration: URLSessionConfiguration = .ephemeral) {
         self.apiKey = apiKey
         self.serverUrl = serverUrl
         self.logger = logger
         self.storage = storage
         self.urlSession = URLSession(configuration: urlSessionConfiguration)
+
+        // its easier to regard these as non-null, but there's not a good workaround for self capture for the
+        // fetch remote task
+        fetchLocalTask = Task {
+            throw RemoteConfigError.preInit
+        }
+
+        fetchRemoteTask = Task {
+            throw RemoteConfigError.preInit
+        }
+
+        super.init()
 
         fetchLocalTask = Task {
             guard let config = try await storage.fetchConfig() else {
@@ -119,19 +132,11 @@ public actor RemoteConfigClient: NSObject {
             return config
         }
 
-        var futureSelf: RemoteConfigClient? = nil
         fetchRemoteTask = Task {
-            guard let futureSelf else {
-                throw RemoteConfigError.badResponse
-            }
-            let configInfo = try await futureSelf.fetch()
-            try? await storage.setConfig(configInfo)
-            return configInfo
+            let config = try await fetch()
+            try? await storage.setConfig(config)
+            return config
         }
-
-        super.init()
-
-        futureSelf = self
     }
 
     /**
@@ -146,7 +151,7 @@ public actor RemoteConfigClient: NSObject {
     @discardableResult
     public nonisolated func subscribe(key: String? = nil,
                                       deliveryMode: DeliveryMode = .all,
-                                      callback: @escaping @Sendable RemoteConfigCallback) -> Any {
+                                      callback: @escaping RemoteConfigCallback) -> Any {
         let id = UUID()
         Task {
             await _subscribe(id: id, key: key, deliveryMode: deliveryMode, callback: callback)
@@ -157,7 +162,7 @@ public actor RemoteConfigClient: NSObject {
     private func _subscribe(id: UUID,
                             key: String?,
                             deliveryMode: DeliveryMode,
-                            callback: @escaping @Sendable RemoteConfigCallback) {
+                            callback: @escaping RemoteConfigCallback) {
         Task {
             let callbackInfo = CallbackInfo(id: id, key: key, deliveryMode: deliveryMode, callback: callback)
             callbacks.append(callbackInfo)
@@ -341,7 +346,7 @@ public actor RemoteConfigClient: NSObject {
     }
 }
 
-final class RemoteConfigUserDefaultsStorage: RemoteConfigClient.Storage, @unchecked Sendable {
+final class RemoteConfigUserDefaultsStorage: RemoteConfigStorage, @unchecked Sendable {
 
     private struct Keys {
         static let config = "config"
