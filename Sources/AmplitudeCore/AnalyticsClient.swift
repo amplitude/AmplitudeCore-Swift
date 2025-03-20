@@ -1,19 +1,10 @@
 import Foundation
 
-public protocol AnalyticsClientConfiguration {
-    var apiKey: String { get }
+public protocol AnalyticsClient: AnyObject {
+
+    var analyticsContext: AnalyticsContext { get }
+
     var optOut: Bool { get }
-    var serverZone: ServerZone { get }
-    var remoteConfigClient: RemoteConfigClient { get }
-}
-
-public protocol AnalyticsClient<ConfigurationType>: AnyObject {
-
-    associatedtype ConfigurationType: AnalyticsClientConfiguration
-
-    var logger: Logger { get }
-
-    var configuration: ConfigurationType { get }
 
     @discardableResult
     func track(event: BaseEvent) -> Self
@@ -48,15 +39,7 @@ public protocol AnalyticsClient<ConfigurationType>: AnyObject {
 
     // TODO: are these needed?
 /*
-    @discardableResult
-    func add(plugin: Plugin) -> Self
 
-    @discardableResult
-    func remove(plugin: Plugin) -> Self
-
-    func plugin(name: String) -> Plugin?
-
-    func apply(closure: (Plugin) -> Void)
  */
 
     // MARK: Identity
