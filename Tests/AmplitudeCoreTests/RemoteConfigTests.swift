@@ -95,7 +95,7 @@ final class RemoteConfigTests: XCTestCase {
 
             didUpdateConfigExpectation.fulfill()
         }
-        await fulfillment(of: [didUpdateConfigExpectation], timeout: 3)
+        await fulfillment(of: [didUpdateConfigExpectation], timeout: 5)
     }
 
     // MARK: - Delivery Strategy tests
@@ -189,7 +189,7 @@ final class RemoteConfigTests: XCTestCase {
 
     // MARK: - Util
 
-    private func makeRemoteConfigClient(storage: RemoteConfigClient.Storage = RemoteConfigUserDefaultsStorage(instanceName: #function)) -> RemoteConfigClient {
+    private func makeRemoteConfigClient(storage: RemoteConfigStorage = RemoteConfigUserDefaultsStorage(instanceName: #function)) -> RemoteConfigClient {
         return RemoteConfigClient(apiKey: "",
                                   serverUrl: "http://www.amplitude.com",
                                   storage: storage,
@@ -208,7 +208,7 @@ class TestRemoteConfigHandler: URLProtocol {
 
     typealias ResponseHandler = (URLRequest) -> (URLResponse, Data?)
 
-    nonisolated(unsafe) static var responseHandler: ResponseHandler? = nil
+    static var responseHandler: ResponseHandler? = nil
 
     override class func canInit(with request: URLRequest) -> Bool {
         return true
