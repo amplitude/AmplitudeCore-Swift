@@ -17,13 +17,14 @@ final class RemoteConfigTests: XCTestCase {
         return configuration
     }()
 
+    @available(macOS 10.15, iOS 13.0, watchOS 6.0, tvOS 13.0, *)
     func testRequestsConfigAndUpdatesCache() async throws {
         let cachedConfig: RemoteConfigClient.RemoteConfig = ["cached": 1]
         let cachedConfigLastFetch = Date.distantPast
         let remoteConfig: RemoteConfigClient.RemoteConfig = ["remote": 1]
         TestRemoteConfigHandler.responseHandler = TestRemoteConfigHandler.successResponseHandler(remoteConfig)
 
-        let storage = RemoteConfigUserDefaultsStorage(instanceName: #function)
+        let storage = RemoteConfigInMemoryStorage()
         try await storage.setConfig(RemoteConfigClient.RemoteConfigInfo(config: cachedConfig,
                                                                         lastFetch: cachedConfigLastFetch))
 
@@ -51,15 +52,16 @@ final class RemoteConfigTests: XCTestCase {
         XCTAssertEqual(storedConfigInfo?.config as? NSDictionary, remoteConfig as NSDictionary)
     }
 
+    @available(macOS 10.15, iOS 13.0, watchOS 6.0, tvOS 13.0, *)
     func testDoesNotUpdateCacheOnError() async throws {
         let didSendRemoteRequestExpectation = XCTestExpectation(description: "it did request config")
-        didSendRemoteRequestExpectation.expectedFulfillmentCount = 3 // retries
+        didSendRemoteRequestExpectation.expectedFulfillmentCount = RemoteConfigClient.Config.maxRetries
         TestRemoteConfigHandler.responseHandler = { request in
             didSendRemoteRequestExpectation.fulfill()
             return TestRemoteConfigHandler.errorResponseHandler()(request)
         }
 
-        let storage = RemoteConfigUserDefaultsStorage(instanceName: #function)
+        let storage = RemoteConfigInMemoryStorage()
 
         let cachedConfigInfo = RemoteConfigClient.RemoteConfigInfo(config: ["bar": 123],
                                                                    lastFetch: Date.distantPast)
@@ -83,9 +85,16 @@ final class RemoteConfigTests: XCTestCase {
         XCTAssertEqual(currentCachedConfigInfo?.lastFetch, cachedConfigInfo.lastFetch)
     }
 
+    @available(macOS 10.15, iOS 13.0, watchOS 6.0, tvOS 13.0, *)
     func testReturnsNilOnErrorColdStart() async throws {
-        TestRemoteConfigHandler.responseHandler = TestRemoteConfigHandler.errorResponseHandler()
-        let storage = RemoteConfigUserDefaultsStorage(instanceName: #function)
+        let didSendRemoteRequestExpectation = XCTestExpectation(description: "it did request config")
+        didSendRemoteRequestExpectation.expectedFulfillmentCount = RemoteConfigClient.Config.maxRetries
+        TestRemoteConfigHandler.responseHandler = { request in
+            didSendRemoteRequestExpectation.fulfill()
+            return TestRemoteConfigHandler.errorResponseHandler()(request)
+        }
+
+        let storage = RemoteConfigInMemoryStorage()
         try await storage.setConfig(nil)
 
         let didUpdateConfigExpectation = XCTestExpectation(description: "it did request config")
@@ -95,12 +104,13 @@ final class RemoteConfigTests: XCTestCase {
 
             didUpdateConfigExpectation.fulfill()
         }
-        await fulfillment(of: [didUpdateConfigExpectation], timeout: 5)
+        await fulfillment(of: [didUpdateConfigExpectation, didSendRemoteRequestExpectation], timeout: 10)
     }
 
     // MARK: - Delivery Strategy tests
 
-    func testAllDeliveryStrategy() async {
+    @available(macOS 10.15, iOS 13.0, watchOS 6.0, tvOS 13.0, *)
+    func testAllDeliveryStrategy() async throws {
         TestRemoteConfigHandler.responseHandler = TestRemoteConfigHandler.successResponseHandler()
 
         let didReceiveCachedResponseExpecation = XCTestExpectation(description: "it did request cached config")
@@ -109,7 +119,10 @@ final class RemoteConfigTests: XCTestCase {
         let didReceiveRemoteResponseExpecation = XCTestExpectation(description: "it did request remote config")
         didReceiveRemoteResponseExpecation.assertForOverFulfill = true
 
-        let remoteConfigClient = makeRemoteConfigClient()
+        let storage = RemoteConfigInMemoryStorage()
+        try await storage.setConfig(.init(config: ["cached": 1], lastFetch: Date.distantPast))
+
+        let remoteConfigClient = makeRemoteConfigClient(storage: storage)
 
         remoteConfigClient.subscribe(deliveryMode: .all) { config, source, _ in
             switch source {
@@ -138,6 +151,7 @@ final class RemoteConfigTests: XCTestCase {
         await fulfillment(of: [subsequentFetchExpectation], timeout: 3)
     }
 
+    @available(macOS 10.15, iOS 13.0, watchOS 6.0, tvOS 13.0, *)
     func testWaitForRemoteDeliveryStrategySuccess() async throws {
         TestRemoteConfigHandler.responseHandler = TestRemoteConfigHandler.successResponseHandler()
 
@@ -156,16 +170,19 @@ final class RemoteConfigTests: XCTestCase {
         await fulfillment(of: [didReceiveRemoteResponseExpecation], timeout: 3)
     }
 
+    @available(macOS 10.15, iOS 13.0, watchOS 6.0, tvOS 13.0, *)
     func testWaitForRemoteDeliveryStrategyTimeout() async throws {
+        let didSendRemoteRequestExpectation = XCTestExpectation(description: "it did request config")
         TestRemoteConfigHandler.responseHandler = { request in
             Thread.sleep(forTimeInterval: 2)
+            didSendRemoteRequestExpectation.fulfill()
             return TestRemoteConfigHandler.successResponseHandler()(request)
         }
 
         let cachedRemoteConfigInfo = RemoteConfigClient.RemoteConfigInfo(config: ["cached": 1],
                                                                          lastFetch: Date.distantPast)
 
-        let storage = RemoteConfigUserDefaultsStorage(instanceName: #function)
+        let storage = RemoteConfigInMemoryStorage()
         try await storage.setConfig(cachedRemoteConfigInfo)
 
         let remoteConfigClient = makeRemoteConfigClient(storage: storage)
@@ -184,16 +201,33 @@ final class RemoteConfigTests: XCTestCase {
             }
         }
 
-        await fulfillment(of: [didReceiveLocalResponseExpecation], timeout: 3)
+        await fulfillment(of: [didReceiveLocalResponseExpecation, didSendRemoteRequestExpectation], timeout: 3)
     }
 
     // MARK: - Util
 
-    private func makeRemoteConfigClient(storage: RemoteConfigStorage = RemoteConfigUserDefaultsStorage(instanceName: #function)) -> RemoteConfigClient {
+    @available(macOS 10.15, iOS 13.0, watchOS 6.0, tvOS 13.0, *)
+    private func makeRemoteConfigClient(storage: RemoteConfigStorage = RemoteConfigInMemoryStorage()) -> RemoteConfigClient {
         return RemoteConfigClient(apiKey: "",
                                   serverUrl: "http://www.amplitude.com",
                                   storage: storage,
                                   urlSessionConfiguration: Self.testSessionConfiguration)
+    }
+}
+
+// MARK: RemoteConfigInMemoryStorage
+
+@available(macOS 10.15, iOS 13.0, watchOS 6.0, tvOS 13.0, *)
+final class RemoteConfigInMemoryStorage: RemoteConfigStorage, @unchecked Sendable {
+
+    private var remoteConfigInfo: RemoteConfigClient.RemoteConfigInfo?
+
+    func fetchConfig() async throws -> RemoteConfigClient.RemoteConfigInfo? {
+        return remoteConfigInfo
+    }
+
+    func setConfig(_ config: RemoteConfigClient.RemoteConfigInfo?) async throws {
+        remoteConfigInfo = config
     }
 }
 
@@ -224,19 +258,22 @@ class TestRemoteConfigHandler: URLProtocol {
             return
         }
 
-        let (response, data) = responseHandler(request)
+        DispatchQueue.global().async { [self] in
+            let (response, data) = responseHandler(request)
 
-        client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
-        if let data {
-            client?.urlProtocol(self, didLoad: data)
+            client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
+            if let data {
+                client?.urlProtocol(self, didLoad: data)
+            }
+            client?.urlProtocolDidFinishLoading(self)
         }
-        client?.urlProtocolDidFinishLoading(self)
     }
 
     override func stopLoading() {
         //no-op
     }
 
+    @available(macOS 10.15, iOS 13.0, watchOS 6.0, tvOS 13.0, *)
     static func successResponseHandler(_ config: RemoteConfigClient.RemoteConfig = ["config": true]) -> ResponseHandler {
         return { request in
             guard let url = request.url else {

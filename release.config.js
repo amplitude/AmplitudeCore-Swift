@@ -19,10 +19,10 @@ module.exports = {
           { "path": "AmplitudeCore.zip" },
         ]
     }],
-    // [
-    //   "@google/semantic-release-replace-plugin",
-    //   {
-    //     "replacements": [
+     [
+       "@google/semantic-release-replace-plugin",
+       {
+         "replacements": [
     //       {
     //         "files": ["AmplitudeCore.podspec"],
     //         "from": "amplitude_core_version = \".*\"",
@@ -37,39 +37,31 @@ module.exports = {
     //         ],
     //         "countMatches": true
     //       },
-    //       {
-    //         "files": ["Package.swift"],
-    //         "from": "https://github.com/amplitude/AmplitudeCore-Swift/releases/download/v.*/AmplitudeCore.zip",
-    //         "to": "https://github.com/amplitude/AmplitudeCore-Swift/releases/download/v${nextRelease.version}/AmplitudeCore.zip",
-    //         "results": [
-    //           {
-    //             "file": "Package.swift",
-    //             "hasChanged": true,
-    //             "numMatches": 1,
-    //             "numReplacements": 1
-    //           }
-    //         ],
-    //         "countMatches": true
-    //       },
-    //       {
-    //         "files": ["Package@swift-5.9.swift"],
-    //         "from": "https://github.com/amplitude/AmplitudeCore-Swift/releases/download/v.*/AmplitudeCore.xcframework.zip",
-    //         "to": "https://github.com/amplitude/AmplitudeCore-Swift/releases/download/v${nextRelease.version}/AmplitudeCore.xcframework.zip",
-    //         "results": [
-    //           {
-    //             "file": "Package@swift-5.9.swift",
-    //             "hasChanged": true,
-    //             "numMatches": 1,
-    //             "numReplacements": 1
-    //           }
-    //         ],
-    //         "countMatches": true
-    //       },
-    //     ]
-    //   }
-    // ],
+          {
+            "files": ["Package.swift", "Package@swift-5.9.swift"],
+            "from": "https://github.com/amplitude/AmplitudeCore-Swift/releases/download/v.*/AmplitudeCore.zip",
+            "to": "https://github.com/amplitude/AmplitudeCore-Swift/releases/download/v${nextRelease.version}/AmplitudeCore.zip",
+            "results": [
+              {
+                "file": "Package.swift",
+                "hasChanged": true,
+                "numMatches": 1,
+                "numReplacements": 1
+              },
+              {
+                "file": "Package@swift-5.9.swift",
+                "hasChanged": true,
+                "numMatches": 1,
+                "numReplacements": 1
+              }
+            ],
+            "countMatches": true
+          },
+        ]
+      }
+    ],
     ["@semantic-release/git", {
-      "assets": [/*"AmplitudeCore.podspec", */"CHANGELOG.md",/* "Package.swift", "Package@swift-5.9.swift"*/],
+      "assets": [/*"AmplitudeCore.podspec", */"CHANGELOG.md", "Package.swift", "Package@swift-5.9.swift"],
       "message": "chore(release): ${nextRelease.version} [skip ci]\n\n${nextRelease.notes}"
     }],
     // ["@semantic-release/exec", {

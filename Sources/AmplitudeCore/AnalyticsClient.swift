@@ -1,5 +1,6 @@
 import Foundation
 
+@available(macOS 10.15, iOS 13.0, watchOS 6.0, tvOS 13.0, *)
 public protocol AnalyticsClientConfiguration {
     var apiKey: String { get }
     var optOut: Bool { get }
@@ -7,6 +8,7 @@ public protocol AnalyticsClientConfiguration {
     var remoteConfigClient: RemoteConfigClient { get }
 }
 
+@available(macOS 10.15, iOS 13.0, watchOS 6.0, tvOS 13.0, *)
 public protocol AnalyticsClient<ConfigurationType>: AnyObject {
 
     associatedtype ConfigurationType: AnalyticsClientConfiguration

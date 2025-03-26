@@ -1,0 +1,24 @@
+{
+  "configurations" : [
+    {
+      "id" : "B11AB016-9271-4883-94F2-CB3DEFA553A3",
+      "name" : "Test Scheme Action",
+      "options" : {
+
+      }
+    }
+  ],
+  "defaultOptions" : {
+    "testExecutionOrdering" : "random"
+  },
+  "testTargets" : [
+    {
+      "target" : {
+        "containerPath" : "container:",
+        "identifier" : "AmplitudeCoreTests",
+        "name" : "AmplitudeCoreTests"
+      }
+    }
+  ],
+  "version" : 1
+}
