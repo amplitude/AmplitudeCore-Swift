@@ -1,0 +1,84 @@
+name: Unit Test
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+  workflow_call:
+
+jobs:
+  unit-test:
+    name: Unit ${{ matrix.platform }} - Xcode ${{ matrix.xcode }} - OS ${{ matrix.test-destination-os }}
+    runs-on: macos-15
+
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: iOS
+            xcode: 15.4
+            device: "iPhone 15"
+            test-destination-os: latest
+
+          - platform: macOS
+            xcode: 15.4
+            test-destination-os: latest
+
+          - platform: tvOS
+            xcode: 15.4
+            test-destination-os: latest
+            device: "Apple TV"
+
+          - platform: watchOS
+            xcode: 15.4
+            test-destination-os: latest
+            device: "Apple Watch Series 9 (41mm)"
+
+          # - platform: visionOS
+          #   xcode: 16
+          #   test-destination-os: latest
+          #   device: "Apple Vision Pro"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Set Xcode ${{ matrix.xcode }}
+        run: |
+          sudo xcode-select -switch /Applications/Xcode_${{ matrix.xcode }}.app
+      - name: ${{ matrix.platform }} Tests
+        run: |
+          case "${{ matrix.platform }}" in
+            iOS)
+              xcodebuild test \
+                -scheme AmplitudeCore-Package \
+                -sdk iphonesimulator \
+                -destination 'platform=iOS Simulator,OS=${{ matrix.test-destination-os }},name=${{ matrix.device }}'
+              ;;
+            macOS)
+              xcodebuild test \
+                -scheme AmplitudeCore-Package \
+                -sdk macosx \
+                -destination 'platform=macosx,OS=${{ matrix.test-destination-os }}'
+              ;;
+            tvOS)
+              xcodebuild \
+                -scheme AmplitudeCore-Package \
+                -sdk appletvsimulator \
+                -destination 'platform=tvOS Simulator,OS=${{ matrix.test-destination-os }},name=${{ matrix.device }}' \
+                test
+              ;;
+            watchOS)
+              xcodebuild \
+                -scheme AmplitudeCore-Package \
+                -sdk watchsimulator \
+                -destination 'platform=watchOS Simulator,OS=${{ matrix.test-destination-os }},name=${{ matrix.device }}' \
+                test
+              ;;
+            visionOS)
+              xcodebuild \
+                -scheme AmplitudeCore-Package \
+                -sdk xrsimulator \
+                -destination 'platform=visionOS Simulator,OS=${{ matrix.test-destination-os }},name=${{ matrix.device }}' \
+                test
+              ;;
+          esac

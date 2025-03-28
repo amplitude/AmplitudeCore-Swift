@@ -15,6 +15,7 @@ public enum PluginType: Int, CaseIterable {
     case utility
 }
 
+@available(macOS 10.15, iOS 13.0, watchOS 6.0, tvOS 13.0, *)
 public protocol Plugin: AnyObject {
     var type: PluginType { get }
     var name: String? { get }
@@ -27,6 +28,7 @@ public protocol Plugin: AnyObject {
     func onOptOutChanged(_ optOut: Bool)
 }
 
+@available(macOS 10.15, iOS 13.0, watchOS 6.0, tvOS 13.0, *)
 public extension Plugin {
 
     var name: String? {

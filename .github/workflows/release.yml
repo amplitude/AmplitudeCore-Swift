@@ -21,14 +21,13 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
   
-  #run-tests:
-  #  name: Run Tests
-  #  uses: ./.github/workflows/unit-test.yml
+  run-tests:
+    name: Run Tests
+    uses: ./.github/workflows/unit-test.yml
   
   release:
     name: Release
-    #needs: [authorize, run-tests]
-    needs: [authorize]
+    needs: [authorize, run-tests]
     runs-on: macos-14
     steps:
       - name: Checkout
@@ -63,7 +62,13 @@ jobs:
         run: sudo xcode-select -switch /Applications/Xcode_15.2.app
 
       - name: Build Framework
-        run: swift-create-xcframework/.build/release/swift-create-xcframework AmplitudeCore --no-debug-symbols --stack-evolution --zip
+        run: swift-create-xcframework/.build/release/swift-create-xcframework AmplitudeCore --skip-binary-targets --no-debug-symbols --stack-evolution --zip
+
+      - name: Update Checksum
+        run: |
+          CHECKSUM=$(xcrun swift package compute-checksum AmplitudeCore.zip) && \
+          sed -i '' -E "s/(checksum: \")[^\"]*(\")/\1$CHECKSUM\2/" Package.swift && \
+          sed -i '' -E "s/(checksum: \")[^\"]*(\")/\1$CHECKSUM\2/" Package@swift-5.9.swift
 
       - name: Semantic Release --dry-run
         if: ${{ github.event.inputs.dryRun == 'true'}}

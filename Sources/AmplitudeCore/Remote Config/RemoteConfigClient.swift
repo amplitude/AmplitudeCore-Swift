@@ -7,11 +7,13 @@
 
 import Foundation
 
+@available(macOS 10.15, iOS 13.0, watchOS 6.0, tvOS 13.0, *)
 protocol RemoteConfigStorage: Sendable {
     func fetchConfig() async throws -> RemoteConfigClient.RemoteConfigInfo?
     func setConfig(_ config: RemoteConfigClient.RemoteConfigInfo?) async throws
 }
 
+@available(macOS 10.15, iOS 13.0, watchOS 6.0, tvOS 13.0, *)
 public actor RemoteConfigClient: NSObject {
 
     public enum DeliveryMode: Sendable {
@@ -34,7 +36,7 @@ public actor RemoteConfigClient: NSObject {
         case preInit
     }
 
-    private struct Config {
+    struct Config {
         static let usServerURL = "https://sr-client-cfg.amplitude.com/config"
         static let euServerURL = "https://sr-client-cfg.eu.amplitude.com/config"
         static let maxRetries = 3
@@ -343,6 +345,7 @@ public actor RemoteConfigClient: NSObject {
     }
 }
 
+@available(macOS 10.15, iOS 13.0, watchOS 6.0, tvOS 13.0, *)
 final class RemoteConfigUserDefaultsStorage: RemoteConfigStorage, @unchecked Sendable {
 
     private struct Keys {
