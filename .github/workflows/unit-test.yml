@@ -35,10 +35,10 @@ jobs:
             test-destination-os: latest
             device: "Apple Watch Series 9 (41mm)"
 
-          # - platform: visionOS
-          #   xcode: 16
-          #   test-destination-os: latest
-          #   device: "Apple Vision Pro"
+          - platform: visionOS
+            xcode: 16
+            test-destination-os: latest
+            device: "Apple Vision Pro"
     steps:
       - name: Checkout
         uses: actions/checkout@v4
