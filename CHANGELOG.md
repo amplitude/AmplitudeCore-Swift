@@ -1,3 +1,10 @@
+## [1.0.2](https://github.com/amplitude/AmplitudeCore-Swift/compare/v1.0.1...v1.0.2) (2025-04-09)
+
+
+### Bug Fixes
+
+* refactor plugins ([#5](https://github.com/amplitude/AmplitudeCore-Swift/issues/5)) ([e5c11bb](https://github.com/amplitude/AmplitudeCore-Swift/commit/e5c11bb9f2ab318c36faa321490a480ebdbab9b8))
+
 ## [1.0.1](https://github.com/amplitude/AmplitudeCore-Swift/compare/v1.0.0...v1.0.1) (2025-03-28)
 
 
