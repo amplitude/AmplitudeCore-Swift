@@ -1,3 +1,10 @@
+## [1.0.3](https://github.com/amplitude/AmplitudeCore-Swift/compare/v1.0.2...v1.0.3) (2025-04-10)
+
+
+### Bug Fixes
+
+* generate objc modulemap ([#12](https://github.com/amplitude/AmplitudeCore-Swift/issues/12)) ([35f3a6b](https://github.com/amplitude/AmplitudeCore-Swift/commit/35f3a6b31ab0981fed0f679efd5dabb3cecf7538))
+
 ## [1.0.2](https://github.com/amplitude/AmplitudeCore-Swift/compare/v1.0.1...v1.0.2) (2025-04-09)
 
 
