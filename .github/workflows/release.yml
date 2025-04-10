@@ -62,7 +62,7 @@ jobs:
         run: sudo xcode-select -switch /Applications/Xcode_15.2.app
 
       - name: Build Framework
-        run: swift-create-xcframework/.build/release/swift-create-xcframework AmplitudeCore --skip-binary-targets --no-debug-symbols --stack-evolution --zip
+        run: swift-create-xcframework/.build/release/swift-create-xcframework AmplitudeCore --skip-binary-targets --no-debug-symbols --stack-evolution --xc-setting DEFINES_MODULE=1 --zip
 
       - name: Update Checksum
         run: |
