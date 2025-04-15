@@ -1,3 +1,10 @@
+## [1.0.5](https://github.com/amplitude/AmplitudeCore-Swift/compare/v1.0.4...v1.0.5) (2025-04-15)
+
+
+### Bug Fixes
+
+* add podspec ([#14](https://github.com/amplitude/AmplitudeCore-Swift/issues/14)) ([5d349a6](https://github.com/amplitude/AmplitudeCore-Swift/commit/5d349a6fa6e5782db151a3982639f7ef3a7309e1))
+
 ## [1.0.4](https://github.com/amplitude/AmplitudeCore-Swift/compare/v1.0.3...v1.0.4) (2025-04-15)
 
 
