@@ -7,7 +7,7 @@
 
 import OSLog
 
-public final class OSLogger: CoreLogger, Sendable {
+public final class OSLogger: CoreLogger {
 
     public let logLevel: LogLevel
     private let logger: OSLog

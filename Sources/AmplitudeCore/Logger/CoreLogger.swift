@@ -8,7 +8,7 @@
 import Foundation
 
 @objc
-public enum LogLevel: Int, Comparable {
+public enum LogLevel: Int, Comparable, Sendable {
 
     case off = 0
     case error = 1
@@ -37,7 +37,8 @@ public enum LogLevel: Int, Comparable {
 }
 
 @objc
-public protocol CoreLogger: AnyObject {
+@preconcurrency
+public protocol CoreLogger: AnyObject, Sendable {
     func error(message: String)
     func warn(message: String)
     func log(message: String)
