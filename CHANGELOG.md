@@ -1,3 +1,10 @@
+## [1.0.4](https://github.com/amplitude/AmplitudeCore-Swift/compare/v1.0.3...v1.0.4) (2025-04-15)
+
+
+### Bug Fixes
+
+* add sendable conformance to logger protocols ([#13](https://github.com/amplitude/AmplitudeCore-Swift/issues/13)) ([3300da8](https://github.com/amplitude/AmplitudeCore-Swift/commit/3300da8f34e15aca309a227612bbe9e0c7bcb68b))
+
 ## [1.0.3](https://github.com/amplitude/AmplitudeCore-Swift/compare/v1.0.2...v1.0.3) (2025-04-10)
 
 
