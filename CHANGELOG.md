@@ -1,3 +1,10 @@
+## [1.0.6](https://github.com/amplitude/AmplitudeCore-Swift/compare/v1.0.5...v1.0.6) (2025-04-16)
+
+
+### Bug Fixes
+
+* Empty Commit to Trigger a Build ([e4d7eac](https://github.com/amplitude/AmplitudeCore-Swift/commit/e4d7eaca621e739b1102a5429b5556c237638688))
+
 ## [1.0.5](https://github.com/amplitude/AmplitudeCore-Swift/compare/v1.0.4...v1.0.5) (2025-04-15)
 
 
