@@ -60,8 +60,11 @@ module.exports = {
           ]
         }
       ],
+      ["@semantic-release/exec", {
+        "prepareCmd": "cat docs/Carthage/AmplitudeCore.json | jq --arg RELEASE ${nextRelease.version} '. + {$RELEASE: \"https://github.com/amplitude/AmplitudeCore-Swift/releases/download/v\($RELEASE)/AmplitudeCore.zip\"}' | tee docs/Carthage/AmplitudeCore.json"
+      }],
       ["@semantic-release/git", {
-        "assets": ["AmplitudeCore.podspec", "CHANGELOG.md", "Package.swift", "Package@swift-5.9.swift"],
+        "assets": ["AmplitudeCore.podspec", "CHANGELOG.md", "Package.swift", "Package@swift-5.9.swift", "Carthage/AmplitudeCore.json"],
         "message": "chore(release): ${nextRelease.version} [skip ci]\n\n${nextRelease.notes}"
       }],
        ["@semantic-release/exec", {
