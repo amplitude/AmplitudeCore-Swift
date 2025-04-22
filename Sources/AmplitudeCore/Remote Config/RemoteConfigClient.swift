@@ -44,12 +44,7 @@ public actor RemoteConfigClient: NSObject {
         static let maxRetries = 3
         static let maxRetryDelay: TimeInterval = 8
         static let minTimeBetweenFetches: TimeInterval = 5 * 60
-        static let fetchedKeys = [
-            "sessionReplay.sr_ios_privacy_config",
-            "sessionReplay.sr_ios_sampling_config",
-            "analyticsSDK.iosSDK",
-            "diagnostics.iosSDK",
-        ]
+        static let group = "ios"
     }
 
     private class CallbackInfo {
@@ -396,7 +391,9 @@ public actor RemoteConfigClient: NSObject {
             urlComponents.path += "/"
         }
         urlComponents.path += encodedApiKey
-        urlComponents.queryItems = Config.fetchedKeys.map { URLQueryItem(name: "config_keys", value: $0) }
+        urlComponents.queryItems = [
+            URLQueryItem(name: "config_group", value: Config.group),
+        ]
 
         guard let url = urlComponents.url else {
             throw RemoteConfigError.invalidServerURL
