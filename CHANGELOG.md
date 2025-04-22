@@ -1,3 +1,10 @@
+## [1.0.7](https://github.com/amplitude/AmplitudeCore-Swift/compare/v1.0.6...v1.0.7) (2025-04-22)
+
+
+### Bug Fixes
+
+* add carthage support via binary format ([#15](https://github.com/amplitude/AmplitudeCore-Swift/issues/15)) ([9855d70](https://github.com/amplitude/AmplitudeCore-Swift/commit/9855d706478c1094ef53de118726ba05b147061f))
+
 ## [1.0.6](https://github.com/amplitude/AmplitudeCore-Swift/compare/v1.0.5...v1.0.6) (2025-04-16)
 
 
