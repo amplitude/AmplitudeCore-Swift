@@ -1,3 +1,10 @@
+## [1.0.8](https://github.com/amplitude/AmplitudeCore-Swift/compare/v1.0.7...v1.0.8) (2025-04-22)
+
+
+### Bug Fixes
+
+* carthage - properly escape release and commit correct file ([#16](https://github.com/amplitude/AmplitudeCore-Swift/issues/16)) ([38b4315](https://github.com/amplitude/AmplitudeCore-Swift/commit/38b43157323af8fee22814004aa92d1d7dea79ed))
+
 ## [1.0.7](https://github.com/amplitude/AmplitudeCore-Swift/compare/v1.0.6...v1.0.7) (2025-04-22)
 
 
