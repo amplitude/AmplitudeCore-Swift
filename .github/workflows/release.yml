@@ -65,7 +65,20 @@ jobs:
         run: pod lib lint
 
       - name: Build Framework
-        run: swift-create-xcframework/.build/release/swift-create-xcframework AmplitudeCore --skip-binary-targets --no-debug-symbols --stack-evolution --xc-setting DEFINES_MODULE=1 --zip
+        run: |
+          swift-create-xcframework/.build/release/swift-create-xcframework \
+          AmplitudeCore \
+          --platform ios \
+          --platform maccatalyst \
+          --platform macos \
+          --platform tvos \
+          --platform watchos \
+          --platform visionos \
+          --skip-binary-targets \
+          --no-debug-symbols \
+          --stack-evolution \
+          --xc-setting DEFINES_MODULE=1 \
+          --zip
 
       - name: Update Checksum
         run: |
