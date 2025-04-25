@@ -1,3 +1,10 @@
+## [1.0.9](https://github.com/amplitude/AmplitudeCore-Swift/compare/v1.0.8...v1.0.9) (2025-04-25)
+
+
+### Bug Fixes
+
+* build for maccataylst ([#18](https://github.com/amplitude/AmplitudeCore-Swift/issues/18)) ([e5e12d1](https://github.com/amplitude/AmplitudeCore-Swift/commit/e5e12d1742daf0755ccd872d2dd83158a080e464))
+
 ## [1.0.8](https://github.com/amplitude/AmplitudeCore-Swift/compare/v1.0.7...v1.0.8) (2025-04-22)
 
 
