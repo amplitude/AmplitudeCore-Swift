@@ -98,7 +98,8 @@ final class RemoteConfigTests: XCTestCase {
         try await storage.setConfig(nil)
 
         let didUpdateConfigExpectation = XCTestExpectation(description: "it did request config")
-        makeRemoteConfigClient(storage: storage).subscribe { config, source, lastFetch in
+        let remoteConfigClient = makeRemoteConfigClient(storage: storage)
+        remoteConfigClient.subscribe { config, source, lastFetch in
             XCTAssertNil(config)
             XCTAssertNil(lastFetch)
 
@@ -158,7 +159,8 @@ final class RemoteConfigTests: XCTestCase {
         let didReceiveRemoteResponseExpecation = XCTestExpectation(description: "it did request remote config")
         didReceiveRemoteResponseExpecation.assertForOverFulfill = true
 
-        makeRemoteConfigClient().subscribe(deliveryMode: .waitForRemote()) { config, source, _ in
+        let remoteConfigClient = makeRemoteConfigClient()
+        remoteConfigClient.subscribe(deliveryMode: .waitForRemote()) { config, source, _ in
             switch source {
             case .cache:
                 XCTFail()
