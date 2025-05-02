@@ -213,7 +213,8 @@ final class RemoteConfigTests: XCTestCase {
         return RemoteConfigClient(apiKey: "",
                                   serverUrl: "http://www.amplitude.com",
                                   storage: storage,
-                                  urlSessionConfiguration: Self.testSessionConfiguration)
+                                  urlSessionConfiguration: Self.testSessionConfiguration,
+                                  maxRetryDelay: 0.1)
     }
 }
 
