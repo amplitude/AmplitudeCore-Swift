@@ -1,3 +1,11 @@
+## [1.0.10](https://github.com/amplitude/AmplitudeCore-Swift/compare/v1.0.9...v1.0.10) (2025-05-02)
+
+
+### Bug Fixes
+
+* add jitter to remote config retries ([#20](https://github.com/amplitude/AmplitudeCore-Swift/issues/20)) ([d4c9760](https://github.com/amplitude/AmplitudeCore-Swift/commit/d4c97601a0a8410c42ffffb4174f5ef6d2e4c915))
+* cancel in-progress requests when RemoteConfigClient is deallocated ([#19](https://github.com/amplitude/AmplitudeCore-Swift/issues/19)) ([281a6b6](https://github.com/amplitude/AmplitudeCore-Swift/commit/281a6b63274fcd2032a4d2b48cdc2ddd4ad116bb))
+
 ## [1.0.9](https://github.com/amplitude/AmplitudeCore-Swift/compare/v1.0.8...v1.0.9) (2025-04-25)
 
 
