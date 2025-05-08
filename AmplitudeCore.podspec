@@ -7,11 +7,6 @@ Pod::Spec.new do |s|
   s.homepage               = "https://amplitude.com"
   s.license                = { :type => "MIT" }
   s.author                 = { "Amplitude" => "dev@amplitude.com" }
-  s.source                 = { :git => "https://github.com/amplitude/AmplitudeCore-Swift.git", :tag => "v#{s.version}" }
-
-  s.source_files           = 'Sources/AmplitudeCore/**/*.{h,swift}'
-  s.resource_bundle        = { 'AmplitudeCore': ['Sources/AmplitudeCore/PrivacyInfo.xcprivacy'] }
-  s.swift_version          = '5.9'
 
   s.ios.deployment_target  = '11.0'
   s.tvos.deployment_target = '11.0'
@@ -19,5 +14,6 @@ Pod::Spec.new do |s|
   s.watchos.deployment_target  = '4.0'
   s.visionos.deployment_target = '1.0'
 
-  s.pod_target_xcconfig = { 'DEFINES_MODULE' => 'YES' }
+  s.source                 = { :http => "https://github.com/amplitude/AmplitudeCore-Swift/releases/download/v#{amplitude_core_version}/AmplitudeCore.zip" }
+  s.vendored_frameworks    = "AmplitudeCore.xcframework"
 end
