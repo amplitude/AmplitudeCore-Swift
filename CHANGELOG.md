@@ -1,3 +1,12 @@
+## [1.0.11](https://github.com/amplitude/AmplitudeCore-Swift/compare/v1.0.10...v1.0.11) (2025-05-09)
+
+
+### Bug Fixes
+
+* create framework before pod validation ([#23](https://github.com/amplitude/AmplitudeCore-Swift/issues/23)) ([a252824](https://github.com/amplitude/AmplitudeCore-Swift/commit/a25282486f04926a34099ff3863e65849589a475))
+* restore deleted carthage manifest ([#21](https://github.com/amplitude/AmplitudeCore-Swift/issues/21)) ([6a5b373](https://github.com/amplitude/AmplitudeCore-Swift/commit/6a5b373ee5b9293fc4ee244787c2d4d25547c7f2))
+* use binary framework for cocoapods ([#22](https://github.com/amplitude/AmplitudeCore-Swift/issues/22)) ([4c2cdfa](https://github.com/amplitude/AmplitudeCore-Swift/commit/4c2cdfa30277e9f5d04b01b08b3690040229615b))
+
 ## [1.0.10](https://github.com/amplitude/AmplitudeCore-Swift/compare/v1.0.9...v1.0.10) (2025-05-02)
 
 
