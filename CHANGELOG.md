@@ -1,3 +1,13 @@
+## [1.0.12](https://github.com/amplitude/AmplitudeCore-Swift/compare/v1.0.11...v1.0.12) (2025-05-12)
+
+
+### Bug Fixes
+
+* add plugin lookup by type ([#27](https://github.com/amplitude/AmplitudeCore-Swift/issues/27)) ([3e66ac8](https://github.com/amplitude/AmplitudeCore-Swift/commit/3e66ac8ec20c9ba6d3c658ec137369988f565370))
+* allow warnings for cocoapods release ([#24](https://github.com/amplitude/AmplitudeCore-Swift/issues/24)) ([9fc6431](https://github.com/amplitude/AmplitudeCore-Swift/commit/9fc64312f50878c7259f7191f4ed22ef8608408c))
+* restore carthage json again ([#25](https://github.com/amplitude/AmplitudeCore-Swift/issues/25)) ([5612efd](https://github.com/amplitude/AmplitudeCore-Swift/commit/5612efd34f92b1eea15d3b718fddb89e749665c7))
+* use better supported file handling for jq in release script ([#26](https://github.com/amplitude/AmplitudeCore-Swift/issues/26)) ([ca2b488](https://github.com/amplitude/AmplitudeCore-Swift/commit/ca2b48886aa471e350358781b078fbeed59d5d09))
+
 ## [1.0.11](https://github.com/amplitude/AmplitudeCore-Swift/compare/v1.0.10...v1.0.11) (2025-05-09)
 
 
