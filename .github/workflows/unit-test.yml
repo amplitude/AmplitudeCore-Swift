@@ -17,26 +17,26 @@ jobs:
       matrix:
         include:
           - platform: iOS
-            xcode: 15.4
-            device: "iPhone 15"
+            xcode: 16.1
+            device: "iPhone 16"
             test-destination-os: latest
 
           - platform: macOS
-            xcode: 15.4
+            xcode: 16.1
             test-destination-os: latest
 
           - platform: tvOS
-            xcode: 15.4
+            xcode: 16.1
             test-destination-os: latest
             device: "Apple TV"
 
           - platform: watchOS
-            xcode: 15.4
+            xcode: 16.1
             test-destination-os: latest
-            device: "Apple Watch Series 9 (41mm)"
+            device: "Apple Watch Series 10 (42mm)"
 
           - platform: visionOS
-            xcode: 16
+            xcode: 16.1
             test-destination-os: latest
             device: "Apple Vision Pro"
     steps:
@@ -58,7 +58,7 @@ jobs:
               xcodebuild test \
                 -scheme AmplitudeCore-Package \
                 -sdk macosx \
-                -destination 'platform=macosx,OS=${{ matrix.test-destination-os }}'
+                -destination 'platform=macOS'
               ;;
             tvOS)
               xcodebuild \
