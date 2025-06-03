@@ -1,3 +1,10 @@
+## [1.0.13](https://github.com/amplitude/AmplitudeCore-Swift/compare/v1.0.12...v1.0.13) (2025-06-03)
+
+
+### Bug Fixes
+
+* compile with Xcode 16.1 ([#28](https://github.com/amplitude/AmplitudeCore-Swift/issues/28)) ([13828a5](https://github.com/amplitude/AmplitudeCore-Swift/commit/13828a54d759d49c4de22a38ffc3b7910a3c38dc))
+
 ## [1.0.12](https://github.com/amplitude/AmplitudeCore-Swift/compare/v1.0.11...v1.0.12) (2025-05-12)
 
 
