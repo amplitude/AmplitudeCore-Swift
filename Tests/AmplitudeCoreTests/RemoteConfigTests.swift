@@ -206,6 +206,53 @@ final class RemoteConfigTests: XCTestCase {
         await fulfillment(of: [didReceiveLocalResponseExpecation, didSendRemoteRequestExpectation], timeout: 3)
     }
 
+    @available(macOS 10.15, iOS 13.0, watchOS 6.0, tvOS 13.0, *)
+    func testResponseContainsNull() async throws {
+        let remoteConfig: RemoteConfigClient.RemoteConfig = [
+            "remote": [
+                "test1": NSNull(),
+                "test2": [1, 2, NSNull()],
+                "test3": [
+                    "a": NSNull(),
+                    "b": [NSNull(), 1, 2, "c"]
+                ],
+                "test4": true,
+            ]
+        ]
+        TestRemoteConfigHandler.responseHandler = TestRemoteConfigHandler.successResponseHandler(remoteConfig)
+
+        let normalizedRemoteConfig: RemoteConfigClient.RemoteConfig = [
+            "remote": [
+                "test2": [1, 2],
+                "test3": [
+                    "b": [1, 2, "c"],
+                ],
+                "test4": true,
+            ]
+        ]
+
+        let storage = RemoteConfigUserDefaultsStorage()
+        try await storage.setConfig(nil)
+
+        let remoteConfigClient = makeRemoteConfigClient(storage: storage)
+
+        let didUpdateConfigExpectation = XCTestExpectation(description: "it did request config")
+        remoteConfigClient.subscribe { config, source, lastFetch in
+            switch source {
+            case .cache:
+                break
+            case .remote:
+                XCTAssertEqual(config as? NSDictionary, normalizedRemoteConfig as NSDictionary)
+                didUpdateConfigExpectation.fulfill()
+            }
+        }
+
+        await fulfillment(of: [didUpdateConfigExpectation], timeout: 3)
+
+        let storedConfigInfo = try await storage.fetchConfig()
+        XCTAssertEqual(storedConfigInfo?.config as? NSDictionary, normalizedRemoteConfig as NSDictionary)
+    }
+
     // MARK: - Util
 
     @available(macOS 10.15, iOS 13.0, watchOS 6.0, tvOS 13.0, *)
