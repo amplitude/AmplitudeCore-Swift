@@ -334,7 +334,8 @@ public actor RemoteConfigClient: NSObject {
 
         if let httpResponse = response as? HTTPURLResponse,
            httpResponse.statusCode == 200,
-           let json = try? JSONSerialization.jsonObject(with: data, options: []) as? [String: Sendable],
+           let rawJson = try? JSONSerialization.jsonObject(with: data, options: []),
+           let json = Self.normalizeJSON(json: rawJson) as? [String: Sendable],
            let config = json["configs"] as? [String: Sendable] {
             return RemoteConfigInfo(config: config, lastFetch: Date())
         } else if retries > 0 {
@@ -370,6 +371,29 @@ public actor RemoteConfigClient: NSObject {
         }
 
         return HttpUtil.makeJsonRequest(url: url)
+    }
+
+    // Filter out any NSNull values or other nonstandard JSON elements
+    // These can crash the standard userdefaults storage
+    private static func normalizeJSON(json: Any) -> Any? {
+        switch json {
+        case let jsonDict as NSDictionary:
+            let normalizedJsonDict = NSMutableDictionary()
+            for (key, value) in jsonDict {
+                if let normalizedValue = normalizeJSON(json: value) {
+                    normalizedJsonDict[key] = normalizedValue
+                }
+            }
+            return normalizedJsonDict
+        case let jsonArray as NSArray:
+            return jsonArray.compactMap { normalizeJSON(json: $0) }
+        case is NSString:
+            return json
+        case is NSNumber:
+            return json
+        default:
+            return nil
+        }
     }
 
     deinit {
