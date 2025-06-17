@@ -1,3 +1,10 @@
+## [1.0.14](https://github.com/amplitude/AmplitudeCore-Swift/compare/v1.0.13...v1.0.14) (2025-06-17)
+
+
+### Bug Fixes
+
+* strip nil values from returned remote config responses ([#30](https://github.com/amplitude/AmplitudeCore-Swift/issues/30)) ([813a589](https://github.com/amplitude/AmplitudeCore-Swift/commit/813a58966f2fdefabd427c68110f9cfecc633696))
+
 ## [1.0.13](https://github.com/amplitude/AmplitudeCore-Swift/compare/v1.0.12...v1.0.13) (2025-06-03)
 
 
