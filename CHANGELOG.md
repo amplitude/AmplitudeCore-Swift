@@ -1,3 +1,10 @@
+# [1.1.0](https://github.com/amplitude/AmplitudeCore-Swift/compare/v1.0.14...v1.1.0) (2025-06-26)
+
+
+### Features
+
+* add interface for ui change notification ([#31](https://github.com/amplitude/AmplitudeCore-Swift/issues/31)) ([e778a22](https://github.com/amplitude/AmplitudeCore-Swift/commit/e778a220a44d319e81744ac6d7d436a9524aa39c))
+
 ## [1.0.14](https://github.com/amplitude/AmplitudeCore-Swift/compare/v1.0.13...v1.0.14) (2025-06-17)
 
 

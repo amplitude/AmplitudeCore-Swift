@@ -1,4 +1,4 @@
-amplitude_core_version = "1.0.14" # Version is managed automatically by semantic-release, please don't change it manually
+amplitude_core_version = "1.1.0" # Version is managed automatically by semantic-release, please don't change it manually
 
 Pod::Spec.new do |s|
   s.name                   = "AmplitudeCore"

@@ -24,8 +24,8 @@ let package = Package(
             resources: [.process("PrivacyInfo.xcprivacy")]),
         .binaryTarget(
             name: "AmplitudeCoreFramework",
-            url: "https://github.com/amplitude/AmplitudeCore-Swift/releases/download/v1.0.14/AmplitudeCore.zip",
-            checksum: "61a9f8614790d21deadfb6f860088869ac6b9181a4a34b50c70153faee420cc4"),
+            url: "https://github.com/amplitude/AmplitudeCore-Swift/releases/download/v1.1.0/AmplitudeCore.zip",
+            checksum: "2c0fbe60170efdf0b634ae73298803880098e1d352c9afef2baface15b45070c"),
         .testTarget(
             name: "AmplitudeCoreTests",
             dependencies: ["AmplitudeCore"])
