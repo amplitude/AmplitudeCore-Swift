@@ -29,7 +29,7 @@ public protocol InterfaceSignalProvider: AnyObject {
 @objc
 @available(macOS 10.15, iOS 13.0, watchOS 6.0, tvOS 13.0, *)
 public protocol InterfaceSignalReceiver: AnyObject, Sendable {
-    func onUIChanged(signal: InterfaceChangeSignal)
+    func onInterfaceChanged(signal: InterfaceChangeSignal)
 
     func onStartProviding()
 
