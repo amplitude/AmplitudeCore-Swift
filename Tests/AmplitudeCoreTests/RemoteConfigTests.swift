@@ -11,6 +11,9 @@ import XCTest
 
 final class RemoteConfigTests: XCTestCase {
 
+    static let apiKey = "testApiKey"
+    static let serverUrl = "http://www.amplitude.com"
+
     private static let testSessionConfiguration: URLSessionConfiguration = {
         let configuration = URLSessionConfiguration.ephemeral
         configuration.protocolClasses = [TestRemoteConfigHandler.self]
@@ -257,8 +260,8 @@ final class RemoteConfigTests: XCTestCase {
 
     @available(macOS 10.15, iOS 13.0, watchOS 6.0, tvOS 13.0, *)
     private func makeRemoteConfigClient(storage: RemoteConfigStorage = RemoteConfigInMemoryStorage()) -> RemoteConfigClient {
-        return RemoteConfigClient(apiKey: "",
-                                  serverUrl: "http://www.amplitude.com",
+        return RemoteConfigClient(apiKey: Self.apiKey,
+                                  serverUrl: Self.serverUrl,
                                   storage: storage,
                                   urlSessionConfiguration: Self.testSessionConfiguration,
                                   maxRetryDelay: 0.1)
@@ -307,6 +310,13 @@ class TestRemoteConfigHandler: URLProtocol {
             client?.urlProtocol(self, didFailWithError: NSError(domain: NSURLErrorDomain, code: NSURLErrorUnknown))
             return
         }
+
+        let baseUrl = request.url.flatMap {
+            var components = URLComponents(url: $0, resolvingAgainstBaseURL: false)
+            components?.queryItems = nil
+            return components?.url?.absoluteString
+        }
+        XCTAssertEqual(baseUrl, "\(RemoteConfigTests.serverUrl)/\(RemoteConfigTests.apiKey)")
 
         DispatchQueue.global().async { [self] in
             let (response, data) = responseHandler(request)

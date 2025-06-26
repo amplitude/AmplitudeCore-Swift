@@ -32,6 +32,7 @@ public actor RemoteConfigClient: NSObject {
     public enum RemoteConfigError: Error {
         case notInCache
         case invalidServerURL
+        case invalidApiKey
         case badResponse
         case preInit
         case cancelled
@@ -356,15 +357,15 @@ public actor RemoteConfigClient: NSObject {
         guard var urlComponents = URLComponents(string: serverUrl) else {
             throw RemoteConfigError.invalidServerURL
         }
-
-        var queryItems: [URLQueryItem] = []
-        queryItems.append(URLQueryItem(name: "api_key", value: apiKey))
-
-        for configKey in Config.fetchedKeys {
-            queryItems.append(URLQueryItem(name: "config_keys", value: configKey))
+        guard let encodedApiKey = apiKey.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) else {
+            throw RemoteConfigError.invalidApiKey
         }
 
-        urlComponents.queryItems = queryItems
+        if !urlComponents.path.hasSuffix("/") {
+            urlComponents.path += "/"
+        }
+        urlComponents.path += encodedApiKey
+        urlComponents.queryItems = Config.fetchedKeys.map { URLQueryItem(name: "config_keys", value: $0) }
 
         guard let url = urlComponents.url else {
             throw RemoteConfigError.invalidServerURL
