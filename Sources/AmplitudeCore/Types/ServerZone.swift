@@ -9,6 +9,7 @@
 public enum ServerZone: Int, Sendable {
     case US
     case EU
+    @_spi(Internal) case STAGING
 
     public typealias RawValue = String
 
@@ -18,6 +19,8 @@ public enum ServerZone: Int, Sendable {
             return "US"
         case .EU:
             return "EU"
+        case .STAGING:
+            return "STAGING"
         }
     }
 
@@ -27,6 +30,8 @@ public enum ServerZone: Int, Sendable {
             self = .US
         case "EU":
             self = .EU
+        case "STAGING":
+            self = .STAGING
         default:
             return nil
         }
