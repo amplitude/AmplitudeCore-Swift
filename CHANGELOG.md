@@ -1,3 +1,15 @@
+# [1.2.0](https://github.com/amplitude/AmplitudeCore-Swift/compare/v1.1.0...v1.2.0) (2025-08-01)
+
+
+### Bug Fixes
+
+* fix crash on iOS 14 ([#36](https://github.com/amplitude/AmplitudeCore-Swift/issues/36)) ([fb07835](https://github.com/amplitude/AmplitudeCore-Swift/commit/fb078354b11bbfd9204d413ae3bf0a79c8963603))
+
+
+### Features
+
+* use new remote config url scheme ([#32](https://github.com/amplitude/AmplitudeCore-Swift/issues/32)) ([37c537c](https://github.com/amplitude/AmplitudeCore-Swift/commit/37c537c53b3d15cbd3d9b4c0cb067cbd078b1d4e))
+
 # [1.1.0](https://github.com/amplitude/AmplitudeCore-Swift/compare/v1.0.14...v1.1.0) (2025-06-26)
 
 
