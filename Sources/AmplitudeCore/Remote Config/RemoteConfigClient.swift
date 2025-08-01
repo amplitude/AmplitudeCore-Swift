@@ -106,6 +106,14 @@ public actor RemoteConfigClient: NSObject {
         case .STAGING:
             serverURL = Config.stagingServerURL
         }
+        self.init(apiKey: apiKey, serverURL: serverURL, instanceName: instanceName, logger: logger)
+    }
+
+    @_spi(Internal)
+    public init(apiKey: String,
+                serverURL: String,
+                instanceName: String? = nil,
+                logger: CoreLogger) {
         self.init(apiKey: apiKey,
                   serverUrl: serverURL,
                   logger: logger,
