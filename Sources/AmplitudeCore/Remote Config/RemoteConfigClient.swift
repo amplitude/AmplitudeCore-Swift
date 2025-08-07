@@ -48,7 +48,7 @@ public actor RemoteConfigClient: NSObject {
         static let fetchedKeys = [
             "sessionReplay.sr_ios_privacy_config",
             "sessionReplay.sr_ios_sampling_config",
-            "analyticsSDK.browserSDK",
+            "analyticsSDK.iosSDK",
         ]
     }
 
