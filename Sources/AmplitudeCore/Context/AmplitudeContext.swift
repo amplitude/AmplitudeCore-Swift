@@ -21,7 +21,7 @@ public struct AmplitudeContext {
         self.init(apiKey: apiKey,
                   instanceName: instanceName,
                   serverZone: serverZone,
-                  serverUrl: nil,
+                  remoteConfigServerUrl: nil,
                   logger: logger)
     }
 
@@ -29,16 +29,16 @@ public struct AmplitudeContext {
     public init(apiKey: String,
                 instanceName: String = "$default_instance",
                 serverZone: ServerZone = .US,
-                serverUrl: String? = nil,
+                remoteConfigServerUrl: String? = nil,
                 logger: CoreLogger = OSLogger(logLevel: .error)) {
 
         self.apiKey = apiKey
         self.instanceName = instanceName
         self.serverZone = serverZone
         self.logger = logger
-        if let serverUrl {
+        if let remoteConfigServerUrl {
             remoteConfigClient = RemoteConfigClient(apiKey: apiKey,
-                                                    serverUrl: serverUrl,
+                                                    serverUrl: remoteConfigServerUrl,
                                                     instanceName: instanceName,
                                                     logger: logger)
         } else {
