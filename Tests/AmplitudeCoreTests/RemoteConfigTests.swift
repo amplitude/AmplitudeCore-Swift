@@ -256,6 +256,214 @@ final class RemoteConfigTests: XCTestCase {
         XCTAssertEqual(storedConfigInfo?.config as? NSDictionary, normalizedRemoteConfig as NSDictionary)
     }
 
+    @available(macOS 10.15, iOS 13.0, watchOS 6.0, tvOS 13.0, *)
+    func testValidJsonDataTypes() async throws {
+
+        func verifyRemoteConfig(input: [String: Any], expected: [String: Any]) async throws {
+            TestRemoteConfigHandler.responseHandler = TestRemoteConfigHandler.successResponseHandler(input)
+
+            let storage = RemoteConfigUserDefaultsStorage()
+            try await storage.setConfig(nil)
+
+            let remoteConfigClient = makeRemoteConfigClient(storage: storage)
+
+            let didUpdateConfigExpectation = XCTestExpectation(description: "it did request config")
+            remoteConfigClient.subscribe { config, source, lastFetch in
+                switch source {
+                case .cache:
+                    break
+                case .remote:
+                    XCTAssertEqual(config as? NSDictionary, expected as NSDictionary)
+                    didUpdateConfigExpectation.fulfill()
+                }
+            }
+
+            await fulfillment(of: [didUpdateConfigExpectation], timeout: 3)
+
+            let storedConfigInfo = try await storage.fetchConfig()
+            XCTAssertEqual(storedConfigInfo?.config as? NSDictionary, expected as NSDictionary)
+        }
+
+        // Minimal valid
+        try await verifyRemoteConfig(input: [:], expected: [:])
+
+        // Nested structures
+        let nested: [String: Any] = [
+            "user": [
+                "id": 123,
+                "name": "Alice",
+                "profile": [
+                    "age": 30,
+                    "languages": ["Swift", "Objective-C", "Klingon"],
+                ]
+            ],
+            "active": true,
+        ]
+        try await verifyRemoteConfig(input: nested, expected: nested)
+
+        // Mixed numeric types
+        let mixedNumbers: [String: Any] = [
+            "int": 42,
+            "double": 3.14159,
+            "float": Float(2.71828),
+            "big": 9_223_372_036_854_775_807, // Int64.max
+        ]
+        try await verifyRemoteConfig(input: mixedNumbers, expected: mixedNumbers)
+
+        // Weird keys
+        let weirdKeys: [String: Any] = [
+            " spaces ": "value",
+            "emoji😊": "smile",
+            "quotes\"inside": "escaped",
+            "backslash\\": "slash",
+            "null\0char": "nullbyte",
+        ]
+        try await verifyRemoteConfig(input: weirdKeys, expected: weirdKeys)
+
+        // Nulls and optionals
+        let nulls: [String: Any] = [
+            "present": "data",
+            "missing": NSNull(),
+        ]
+        try await verifyRemoteConfig(input: nulls, expected: ["present": "data"])
+
+        // Deep nesting
+        let deepNest: [String: Any] = [
+            "level1": [
+                "level2": [
+                    "level3": [
+                        "level4": [
+                            "value": "bottom",
+                        ]
+                    ]
+                ]
+            ]
+        ]
+        try await verifyRemoteConfig(input: deepNest, expected: deepNest)
+
+        // Mixed arrays
+        let mixedArray: [String: Any] = [
+            "array": [1, "two", ["three": 3], true]
+        ]
+        try await verifyRemoteConfig(input: mixedArray, expected: mixedArray)
+
+        // Unicode stress
+        let unicode: [String: Any] = [
+            "japanese": "こんにちは",
+            "arabic": "مرحبا",
+            "combining": "e\u{0301}", // é as e + accent
+            "rightToLeft": "\u{202E}txet", // RTL override
+        ]
+        try await verifyRemoteConfig(input: unicode, expected: unicode)
+
+        // Special number formats
+        let numbersAsStrings: [String: Any] = [
+            "hexString": "0x1A",
+            "expNotation": 1.2e+10,
+            "negativeZero": -0.0,
+        ]
+        try await verifyRemoteConfig(input: numbersAsStrings, expected: numbersAsStrings)
+    }
+
+    func testInvalidJsonDataTypes() async throws {
+
+        func verifyRemoteConfig(input: String) async throws {
+            TestRemoteConfigHandler.responseHandler = TestRemoteConfigHandler.rawResponseHandler(input)
+
+            let storage = RemoteConfigUserDefaultsStorage()
+            try await storage.setConfig(nil)
+
+            let remoteConfigClient = makeRemoteConfigClient(storage: storage)
+
+            let didUpdateConfigExpectation = XCTestExpectation(description: "it did request config")
+            remoteConfigClient.subscribe { config, source, lastFetch in
+                switch source {
+                case .cache:
+                    break
+                case .remote:
+                    XCTAssertNil(config)
+                    didUpdateConfigExpectation.fulfill()
+                }
+            }
+
+            await fulfillment(of: [didUpdateConfigExpectation], timeout: 3)
+
+            let storedConfigInfo = try await storage.fetchConfig()
+            XCTAssertNil(storedConfigInfo)
+        }
+
+        let empty = ""
+        try await verifyRemoteConfig(input: empty)
+
+        let emptyKey = "{\"\": 123}"
+        try await verifyRemoteConfig(input: emptyKey)
+
+        let missingQuotes = """
+        {
+          unquotedKey: "value"
+        }
+        """
+        try await verifyRemoteConfig(input: missingQuotes)
+
+        let singleQuotes = """
+        {
+          'key': 'value'
+        }
+        """
+        try await verifyRemoteConfig(input: singleQuotes)
+
+        let trailingComma = """
+        {
+          "a": 1,
+        }
+        """
+        try await verifyRemoteConfig(input: trailingComma)
+
+        let nanInfinity = """
+        {
+          "nan": NaN,
+          "inf": Infinity
+        }
+        """
+        try await verifyRemoteConfig(input: nanInfinity)
+
+        let controlChars = """
+        {
+          "key": "value\u{0001}"
+        }
+        """
+        try await verifyRemoteConfig(input: controlChars)
+
+        let extraBrace = """
+        {
+          "key": "value"
+        }}
+        """
+        try await verifyRemoteConfig(input: extraBrace)
+
+        let danglingColon = """
+        {
+          "key":
+        }
+        """
+        try await verifyRemoteConfig(input: danglingColon)
+
+        let mixedTopLevel = """
+        {
+          "a": 1
+        }
+        [2, 3]
+        """
+        try await verifyRemoteConfig(input: mixedTopLevel)
+
+        let badUnicodeEscape = """
+        {
+          "emoji": "\\uD83D"
+        }
+        """
+        try await verifyRemoteConfig(input: badUnicodeEscape)
+    }
+
     // MARK: - Util
 
     @available(macOS 10.15, iOS 13.0, watchOS 6.0, tvOS 13.0, *)
@@ -354,6 +562,21 @@ class TestRemoteConfigHandler: URLProtocol {
     static func errorResponseHandler(statusCode: Int = 400) -> ResponseHandler {
         return { request in
             return (HTTPURLResponse(url: request.url!, statusCode: statusCode, httpVersion: nil, headerFields: nil)!, nil)
+        }
+    }
+
+    static func rawResponseHandler(_ responseBody: String) -> ResponseHandler {
+        return { request in
+            guard let url = request.url else {
+                return (HTTPURLResponse(url: request.url!, statusCode: 400, httpVersion: nil, headerFields: nil)!, nil)
+            }
+
+            let response = HTTPURLResponse(url: url,
+                                           statusCode: 200,
+                                           httpVersion: nil,
+                                           headerFields: ["Content-Type": "application/json"])!
+
+            return (response, responseBody.data(using: .utf8))
         }
     }
 }
