@@ -20,11 +20,11 @@ jobs:
           repository: ${{ github.repository }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-  
+
   run-tests:
     name: Run Tests
     uses: ./.github/workflows/unit-test.yml
-  
+
   release:
     name: Release
     needs: [authorize, run-tests]
@@ -69,7 +69,6 @@ jobs:
           --platform watchos \
           --platform visionos \
           --skip-binary-targets \
-          --no-debug-symbols \
           --stack-evolution \
           --xc-setting DEFINES_MODULE=1 \
           --zip
