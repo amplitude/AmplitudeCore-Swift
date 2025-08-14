@@ -1,3 +1,11 @@
+## [1.2.1](https://github.com/amplitude/AmplitudeCore-Swift/compare/v1.2.0...v1.2.1) (2025-08-14)
+
+
+### Bug Fixes
+
+* fix remote config key for ananlytics sdk ([#37](https://github.com/amplitude/AmplitudeCore-Swift/issues/37)) ([48a8318](https://github.com/amplitude/AmplitudeCore-Swift/commit/48a8318eeb0afdf3290ddc231672baec27be4b2f))
+* include dSYM file for release ([#38](https://github.com/amplitude/AmplitudeCore-Swift/issues/38)) ([606b3d8](https://github.com/amplitude/AmplitudeCore-Swift/commit/606b3d83beda762221b509326e13f3afb755f491))
+
 # [1.2.0](https://github.com/amplitude/AmplitudeCore-Swift/compare/v1.1.0...v1.2.0) (2025-08-01)
 
 
