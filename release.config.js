@@ -38,7 +38,7 @@ module.exports = {
               "countMatches": true
             },
             {
-              "files": ["Package.swift", "Package@swift-5.9.swift"],
+              "files": ["Package.swift", "Package@swift-5.9.swift", "Package@swift-6.2.swift"],
               "from": "https://github.com/amplitude/AmplitudeCore-Swift/releases/download/v.*/AmplitudeCore.zip",
               "to": "https://github.com/amplitude/AmplitudeCore-Swift/releases/download/v${nextRelease.version}/AmplitudeCore.zip",
               "results": [
@@ -53,6 +53,12 @@ module.exports = {
                   "hasChanged": true,
                   "numMatches": 1,
                   "numReplacements": 1
+                },
+                {
+                  "file": "Package@swift-6.2.swift",
+                  "hasChanged": true,
+                  "numMatches": 1,
+                  "numReplacements": 1
                 }
               ],
               "countMatches": true
@@ -64,7 +70,7 @@ module.exports = {
         "prepareCmd": "cat docs/Carthage/AmplitudeCore.json | jq --arg RELEASE '${nextRelease.version}' '. + {$RELEASE: \"https://github.com/amplitude/AmplitudeCore-Swift/releases/download/v\\($RELEASE)/AmplitudeCore.zip\"}' > docs/Carthage/AmplitudeCore.json.tmp && mv docs/Carthage/AmplitudeCore.json.tmp docs/Carthage/AmplitudeCore.json"
       }],
       ["@semantic-release/git", {
-        "assets": ["AmplitudeCore.podspec", "CHANGELOG.md", "Package.swift", "Package@swift-5.9.swift", "docs/Carthage/AmplitudeCore.json"],
+        "assets": ["AmplitudeCore.podspec", "CHANGELOG.md", "Package.swift", "Package@swift-5.9.swift", "Package@swift-6.2.swift", "docs/Carthage/AmplitudeCore.json"],
         "message": "chore(release): ${nextRelease.version} [skip ci]\n\n${nextRelease.notes}"
       }],
        ["@semantic-release/exec", {
