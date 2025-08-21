@@ -17,27 +17,27 @@ jobs:
       matrix:
         include:
           - platform: iOS
-            xcode: 16.1
+            xcode: 16.4
             device: "iPhone 16"
             test-destination-os: latest
 
           - platform: macOS
-            xcode: 16.1
+            xcode: 16.4
             test-destination-os: latest
 
           - platform: tvOS
-            xcode: 16.1
+            xcode: 16.4
             test-destination-os: latest
             device: "Apple TV"
 
           - platform: watchOS
-            xcode: 16.1
+            xcode: 16.4
             test-destination-os: latest
             device: "Apple Watch Series 10 (42mm)"
 
           - platform: visionOS
-            xcode: 16.1
-            test-destination-os: latest
+            xcode: 16.4
+            test-destination-os: 2.5
             device: "Apple Vision Pro"
     steps:
       - name: Checkout
