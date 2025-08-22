@@ -1,3 +1,10 @@
+## [1.2.2](https://github.com/amplitude/AmplitudeCore-Swift/compare/v1.2.1...v1.2.2) (2025-08-22)
+
+
+### Bug Fixes
+
+* avoid supported version deprecated warning ([#41](https://github.com/amplitude/AmplitudeCore-Swift/issues/41)) ([313a8e9](https://github.com/amplitude/AmplitudeCore-Swift/commit/313a8e985a9939d4cb2378259027d60b96781855))
+
 ## [1.2.1](https://github.com/amplitude/AmplitudeCore-Swift/compare/v1.2.0...v1.2.1) (2025-08-14)
 
 
