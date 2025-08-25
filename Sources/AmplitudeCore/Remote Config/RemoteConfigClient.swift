@@ -41,6 +41,7 @@ public actor RemoteConfigClient: NSObject {
     struct Config {
         static let usServerURL = "https://sr-client-cfg.amplitude.com/config"
         static let euServerURL = "https://sr-client-cfg.eu.amplitude.com/config"
+        static let stagingServerURL = "https://sr-client-cfg.stag2.amplitude.com/config"
         static let maxRetries = 3
         static let maxRetryDelay: TimeInterval = 8
         static let minTimeBetweenFetches: TimeInterval = 5 * 60
@@ -102,9 +103,19 @@ public actor RemoteConfigClient: NSObject {
             serverURL = Config.usServerURL
         case .EU:
             serverURL = Config.euServerURL
+        case .STAGING:
+            serverURL = Config.stagingServerURL
         }
+        self.init(apiKey: apiKey, serverUrl: serverURL, instanceName: instanceName, logger: logger)
+    }
+
+    @_spi(Internal)
+    public init(apiKey: String,
+                serverUrl: String,
+                instanceName: String? = nil,
+                logger: CoreLogger) {
         self.init(apiKey: apiKey,
-                  serverUrl: serverURL,
+                  serverUrl: serverUrl,
                   logger: logger,
                   storage: RemoteConfigUserDefaultsStorage(instanceName: instanceName))
     }
