@@ -135,8 +135,13 @@ public actor RemoteConfigClient: NSObject {
 
         super.init()
 
-        Task {
-            await _updateConfigs()
+        fetchRemoteTask = Task.detached { [urlSession, serverUrl, apiKey, maxRetryDelay, weak self] in
+            let config = try await Self.fetch(urlSession: urlSession,
+                                              serverUrl: serverUrl,
+                                              apiKey: apiKey,
+                                              maxRetryDelay: maxRetryDelay)
+            try? await self?.storage.setConfig(config)
+            return config
         }
     }
 
