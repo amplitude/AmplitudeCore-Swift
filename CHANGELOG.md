@@ -1,3 +1,10 @@
+## [1.2.3](https://github.com/amplitude/AmplitudeCore-Swift/compare/v1.2.2...v1.2.3) (2025-09-29)
+
+
+### Bug Fixes
+
+* prevent fetchRemoteTask was called before _updateConfigs finished ([#44](https://github.com/amplitude/AmplitudeCore-Swift/issues/44)) ([07ff742](https://github.com/amplitude/AmplitudeCore-Swift/commit/07ff742a760a2d1a9be7ad0c16420033a4519e24))
+
 ## [1.2.2](https://github.com/amplitude/AmplitudeCore-Swift/compare/v1.2.1...v1.2.2) (2025-08-22)
 
 

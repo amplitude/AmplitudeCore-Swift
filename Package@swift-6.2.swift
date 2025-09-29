@@ -26,8 +26,8 @@ let package = Package(
             swiftSettings: [.swiftLanguageMode(.v5)]),
         .binaryTarget(
             name: "AmplitudeCoreFramework",
-            url: "https://github.com/amplitude/AmplitudeCore-Swift/releases/download/v1.2.2/AmplitudeCore.zip",
-            checksum: "dd8ecc1d5f1590f64cc4adbea62312258b30877264d384c50e6f30dde330cdc3"),
+            url: "https://github.com/amplitude/AmplitudeCore-Swift/releases/download/v1.2.3/AmplitudeCore.zip",
+            checksum: "843dc675b4a6ef342f2a0fcb9d330de98c16e2cefc60f362f1f2daad2c7fbc98"),
         .testTarget(
             name: "AmplitudeCoreTests",
             dependencies: ["AmplitudeCore"],
