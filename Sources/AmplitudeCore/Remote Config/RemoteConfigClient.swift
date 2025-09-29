@@ -36,7 +36,6 @@ public actor RemoteConfigClient: NSObject {
         case badResponse
         case preInit
         case cancelled
-        case clientUnavailable
     }
 
     struct Config {
@@ -92,7 +91,6 @@ public actor RemoteConfigClient: NSObject {
     private var fetchLocalTask: Task<RemoteConfigInfo, Error>
     private var fetchRemoteTask: Task<RemoteConfigInfo, Error>
     private var callbacks: [CallbackInfo] = []
-    private var initializationTask: Task<Void, Never>?
 
     public init(apiKey: String,
                 serverZone: ServerZone,
@@ -137,8 +135,13 @@ public actor RemoteConfigClient: NSObject {
 
         super.init()
 
-        initializationTask = Task {
-            await _updateConfigs()
+        fetchRemoteTask = Task.detached { [urlSession, serverUrl, apiKey, maxRetryDelay, weak self] in
+            let config = try await Self.fetch(urlSession: urlSession,
+                                              serverUrl: serverUrl,
+                                              apiKey: apiKey,
+                                              maxRetryDelay: maxRetryDelay)
+            try? await self?.storage.setConfig(config)
+            return config
         }
     }
 
@@ -169,16 +172,12 @@ public actor RemoteConfigClient: NSObject {
         let callbackInfo = CallbackInfo(id: id, key: key, deliveryMode: deliveryMode, callback: callback)
         callbacks.append(callbackInfo)
 
-        Task.detached { [weak self, fetchLocalTask, initializationTask] in
+        Task.detached { [weak self, fetchLocalTask, fetchRemoteTask] in
             switch callbackInfo.deliveryMode {
             case .all:
-                await withThrowingTaskGroup(of: (configInfo: RemoteConfigInfo, source: Source).self) { [fetchLocalTask, initializationTask] taskGroup in
+                await withThrowingTaskGroup(of: (configInfo: RemoteConfigInfo, source: Source).self) { [fetchLocalTask, fetchRemoteTask] taskGroup in
                     // send remote first, if it's already complete we can skip the cached response
                     taskGroup.addTask {
-                        await initializationTask?.value
-                        guard let fetchRemoteTask = await self?.fetchRemoteTask else {
-                            throw RemoteConfigError.clientUnavailable
-                        }
                         return (try await fetchRemoteTask.value, .remote)
                     }
                     await Task.yield()
@@ -207,10 +206,6 @@ public actor RemoteConfigClient: NSObject {
                 }
             case .waitForRemote(timeout: let timeout):
                 let fetchTask = Task {
-                    await initializationTask?.value
-                    guard let fetchRemoteTask = await self?.fetchRemoteTask else {
-                        throw RemoteConfigError.clientUnavailable
-                    }
                     let config = try await fetchRemoteTask.value
                     try Task.checkCancellation()
                     return config
@@ -267,7 +262,6 @@ public actor RemoteConfigClient: NSObject {
      */
     public nonisolated func updateConfigs() {
         Task.detached { [weak self] in
-            await self?.initializationTask?.value
             guard let fetchRemoteTask = await self?.fetchRemoteTask else {
                 return
             }
