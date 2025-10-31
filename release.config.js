@@ -17,6 +17,7 @@ module.exports = {
       "@semantic-release/github", {
         "assets": [
           { "path": "AmplitudeCore.zip" },
+          { "path": "AmplitudeCoreNoUIKit.zip" },
         ]
       }],
       [
@@ -39,8 +40,8 @@ module.exports = {
             },
             {
               "files": ["Package.swift", "Package@swift-5.9.swift", "Package@swift-6.2.swift"],
-              "from": "https://github.com/amplitude/AmplitudeCore-Swift/releases/download/v.*/AmplitudeCore.zip",
-              "to": "https://github.com/amplitude/AmplitudeCore-Swift/releases/download/v${nextRelease.version}/AmplitudeCore.zip",
+              "from": "https://github.com/amplitude/AmplitudeCore-Swift/releases/download/v.*/AmplitudeCore",
+              "to": "https://github.com/amplitude/AmplitudeCore-Swift/releases/download/v${nextRelease.version}/AmplitudeCore",
               "results": [
                 {
                   "file": "Package.swift",
@@ -56,6 +57,20 @@ module.exports = {
                 },
                 {
                   "file": "Package@swift-6.2.swift",
+                  "hasChanged": true,
+                  "numMatches": 1,
+                  "numReplacements": 1
+                }
+              ],
+              "countMatches": true
+            },
+            {
+              "files": ["Sources/AmplitudeCore/Constants.swift"],
+              "from": "SDK_VERSION = \".*\"",
+              "to": "SDK_VERSION = \"${nextRelease.version}\"",
+              "results": [
+                {
+                  "file": "Sources/AmplitudeCore/Constants.swift",
                   "hasChanged": true,
                   "numMatches": 1,
                   "numReplacements": 1
