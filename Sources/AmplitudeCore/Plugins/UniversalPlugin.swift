@@ -17,6 +17,7 @@ public protocol UniversalPlugin: AnyObject {
     func onIdentityChanged(_ identity: AnalyticsIdentity)
     func onSessionIdChanged(_ sessionId: Int64)
     func onOptOutChanged(_ optOut: Bool)
+    func onReset()
 }
 
 @available(macOS 10.15, iOS 13.0, watchOS 6.0, tvOS 13.0, *)
@@ -33,4 +34,5 @@ public extension UniversalPlugin {
     func onIdentityChanged(_ identity: AnalyticsIdentity) {}
     func onSessionIdChanged(_ sessionId: Int64) {}
     func onOptOutChanged(_ optOut: Bool) {}
+    func onReset() {}
 }
