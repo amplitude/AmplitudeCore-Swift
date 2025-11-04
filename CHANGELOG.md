@@ -1,3 +1,10 @@
+## [1.2.4](https://github.com/amplitude/AmplitudeCore-Swift/compare/v1.2.3...v1.2.4) (2025-11-04)
+
+
+### Bug Fixes
+
+* add onReset plugin lifecycle handler ([#46](https://github.com/amplitude/AmplitudeCore-Swift/issues/46)) ([c9e3d39](https://github.com/amplitude/AmplitudeCore-Swift/commit/c9e3d3904bcd93186039fb2746a6ac24151f9f25))
+
 ## [1.2.3](https://github.com/amplitude/AmplitudeCore-Swift/compare/v1.2.2...v1.2.3) (2025-09-29)
 
 
