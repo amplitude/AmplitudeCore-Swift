@@ -12,15 +12,26 @@ import XCTest
 final class DiagnosticsClientTests: XCTestCase {
 
     static let testApiKey = "test-diagnostics-api-key"
+    static let testInstanceName = "test-diagnostics-instance-name"
 
     static let testSessionConfiguration: URLSessionConfiguration = {
         let configuration = URLSessionConfiguration.ephemeral
+        #if !os(watchOS)
+        // URLProtocol doesn't work reliably on watchOS, so only set it on other platforms
         configuration.protocolClasses = [TestDiagnosticsHandler.self]
+        #endif
         return configuration
     }()
 
     override func setUp() async throws {
         TestDiagnosticsHandler.reset()
+    }
+
+    /// Helper to skip tests that require URLProtocol on watchOS (where it doesn't work)
+    private func skipIfURLProtocolUnsupported() throws {
+        #if os(watchOS)
+        throw XCTSkip("URLProtocol-based network mocking is unreliable on watchOS")
+        #endif
     }
 
     // MARK: - Initialization Tests
@@ -30,9 +41,10 @@ final class DiagnosticsClientTests: XCTestCase {
 
         let client = DiagnosticsClient(
             apiKey: Self.testApiKey,
-            serverZone: .US,
+            instanceName: "$default-instance",
             enabled: true,
             sampleRate: 1.0,
+            remoteConfigClient: nil,
             urlSessionConfiguration: Self.testSessionConfiguration
         )
 
@@ -43,8 +55,10 @@ final class DiagnosticsClientTests: XCTestCase {
     func testInitializationWithSampledOut() async throws {
         let client = DiagnosticsClient(
             apiKey: Self.testApiKey,
+            instanceName: "$default-instance",
             enabled: true,
             sampleRate: 0.0,
+            remoteConfigClient: nil,
             urlSessionConfiguration: Self.testSessionConfiguration
         )
 
@@ -55,8 +69,10 @@ final class DiagnosticsClientTests: XCTestCase {
     func testInitializationWithDisabled() async throws {
         let client = DiagnosticsClient(
             apiKey: Self.testApiKey,
+            instanceName: Self.testInstanceName,
             enabled: false,
             sampleRate: 1.0,
+            remoteConfigClient: nil,
             urlSessionConfiguration: Self.testSessionConfiguration
         )
 
@@ -67,6 +83,8 @@ final class DiagnosticsClientTests: XCTestCase {
     // MARK: - Tag Tests
 
     func testSetTagsAndFlush() async throws {
+        try skipIfURLProtocolUnsupported()
+
         var capturedRequest: URLRequest?
         let payloadExpectation = XCTestExpectation(description: "Payload captured")
 
@@ -112,8 +130,10 @@ final class DiagnosticsClientTests: XCTestCase {
     func testSetTagWhenDisabled() async throws {
         let client = DiagnosticsClient(
             apiKey: Self.testApiKey,
+            instanceName: Self.testInstanceName,
             enabled: false,
             sampleRate: 1.0,
+            remoteConfigClient: nil,
             urlSessionConfiguration: Self.testSessionConfiguration
         )
 
@@ -127,6 +147,8 @@ final class DiagnosticsClientTests: XCTestCase {
     // MARK: - Counter Tests
 
     func testIncrementAndFlush() async throws {
+        try skipIfURLProtocolUnsupported()
+
         var capturedRequest: URLRequest?
         let payloadExpectation = XCTestExpectation(description: "Payload captured")
 
@@ -167,6 +189,8 @@ final class DiagnosticsClientTests: XCTestCase {
     }
 
     func testIncrementWithDefaultSize() async throws {
+        try skipIfURLProtocolUnsupported()
+
         var capturedRequest: URLRequest?
         let payloadExpectation = XCTestExpectation(description: "Payload captured")
 
@@ -206,6 +230,8 @@ final class DiagnosticsClientTests: XCTestCase {
     // MARK: - Histogram Tests
 
     func testRecordHistogramAndFlush() async throws {
+        try skipIfURLProtocolUnsupported()
+
         var capturedRequest: URLRequest?
         let payloadExpectation = XCTestExpectation(description: "Payload captured")
 
@@ -251,6 +277,8 @@ final class DiagnosticsClientTests: XCTestCase {
     // MARK: - Event Tests
 
     func testRecordEventsAndFlush() async throws {
+        try skipIfURLProtocolUnsupported()
+
         var capturedRequest: URLRequest?
         let payloadExpectation = XCTestExpectation(description: "Payload captured")
 
@@ -297,6 +325,8 @@ final class DiagnosticsClientTests: XCTestCase {
     // MARK: - Flush Tests
 
     func testFlushAllDataTypes() async throws {
+        try skipIfURLProtocolUnsupported()
+
         var capturedRequest: URLRequest?
         let payloadExpectation = XCTestExpectation(description: "Payload captured")
 
@@ -372,6 +402,8 @@ final class DiagnosticsClientTests: XCTestCase {
     }
 
     func testFlushSendsCorrectHeaders() async throws {
+        try skipIfURLProtocolUnsupported()
+
         var capturedRequest: URLRequest?
         let headerExpectation = XCTestExpectation(description: "Headers captured")
 
@@ -406,14 +438,18 @@ final class DiagnosticsClientTests: XCTestCase {
     // MARK: - Server Zone Tests
 
     func testUSServerZone() async throws {
+        try skipIfURLProtocolUnsupported()
+
         var capturedURL: URL?
         let urlExpectation = XCTestExpectation(description: "URL captured")
 
         let client = DiagnosticsClient(
             apiKey: Self.testApiKey,
             serverZone: .US,
+            instanceName: Self.testInstanceName,
             enabled: true,
             sampleRate: 1.0,
+            remoteConfigClient: nil,
             urlSessionConfiguration: Self.testSessionConfiguration
         )
 
@@ -441,14 +477,18 @@ final class DiagnosticsClientTests: XCTestCase {
     }
 
     func testEUServerZone() async throws {
+        try skipIfURLProtocolUnsupported()
+
         var capturedURL: URL?
         let urlExpectation = XCTestExpectation(description: "URL captured")
 
         let client = DiagnosticsClient(
             apiKey: Self.testApiKey,
             serverZone: .EU,
+            instanceName: Self.testInstanceName,
             enabled: true,
             sampleRate: 1.0,
+            remoteConfigClient: nil,
             urlSessionConfiguration: Self.testSessionConfiguration
         )
 
@@ -480,32 +520,38 @@ final class DiagnosticsClientTests: XCTestCase {
     func testDisableStopsOperation() async throws {
         let client = DiagnosticsClient(
             apiKey: Self.testApiKey,
+            instanceName: Self.testInstanceName,
             enabled: true,
             sampleRate: 1.0,
+            remoteConfigClient: nil,
             urlSessionConfiguration: Self.testSessionConfiguration
         )
 
         let wasRunning = await client.isRunning
         XCTAssertTrue(wasRunning)
 
-        await client.setEnabled(false)
+        await client.updateConfig(enabled: false)
 
         let isRunningAfterDisable = await client.isRunning
         XCTAssertFalse(isRunningAfterDisable)
     }
 
     func testEnableStartsOperation() async throws {
+        try skipIfURLProtocolUnsupported()
+
         let client = DiagnosticsClient(
             apiKey: Self.testApiKey,
+            instanceName: Self.testInstanceName,
             enabled: false,
             sampleRate: 1.0,
+            remoteConfigClient: nil,
             urlSessionConfiguration: Self.testSessionConfiguration
         )
 
         let wasRunning = await client.isRunning
         XCTAssertFalse(wasRunning)
 
-        await client.setEnabled(true)
+        await client.updateConfig(enabled: true)
 
         let isRunningAfterEnable = await client.isRunning
         XCTAssertTrue(isRunningAfterEnable)
@@ -516,15 +562,17 @@ final class DiagnosticsClientTests: XCTestCase {
     func testChangeSampleRateToZeroStopsOperation() async throws {
         let client = DiagnosticsClient(
             apiKey: Self.testApiKey,
+            instanceName: Self.testInstanceName,
             enabled: true,
             sampleRate: 1.0,
+            remoteConfigClient: nil,
             urlSessionConfiguration: Self.testSessionConfiguration
         )
 
         let wasRunning = await client.isRunning
         XCTAssertTrue(wasRunning)
 
-        await client.setSampleRate(0.0)
+        await client.updateConfig(sampleRate: 0.0)
 
         // Note: Due to deterministic sampling based on session seed,
         // changing sample rate may or may not immediately affect isRunning
@@ -533,17 +581,21 @@ final class DiagnosticsClientTests: XCTestCase {
     }
 
     func testChangeSampleRateToOneStartsOperation() async throws {
+        try skipIfURLProtocolUnsupported()
+
         let client = DiagnosticsClient(
             apiKey: Self.testApiKey,
+            instanceName: Self.testInstanceName,
             enabled: true,
             sampleRate: 0.001, // Very low
+            remoteConfigClient: nil,
             urlSessionConfiguration: Self.testSessionConfiguration
         )
 
         // Note: With low sample rate, may or may not be running initially
         _ = await client.isRunning
 
-        await client.setSampleRate(1.0)
+        await client.updateConfig(sampleRate: 1.0)
 
         // Should definitely be running with sample rate 1.0
         let isRunningAfterChange = await client.isRunning
@@ -555,8 +607,10 @@ final class DiagnosticsClientTests: XCTestCase {
     func testObserveIsRunningReceivesInitialValue() async throws {
         let client = DiagnosticsClient(
             apiKey: Self.testApiKey,
+            instanceName: Self.testInstanceName,
             enabled: true,
             sampleRate: 1.0,
+            remoteConfigClient: nil,
             urlSessionConfiguration: Self.testSessionConfiguration
         )
 
@@ -573,8 +627,10 @@ final class DiagnosticsClientTests: XCTestCase {
     func testObserveIsRunningNotifiesOnEnabledChange() async throws {
         let client = DiagnosticsClient(
             apiKey: Self.testApiKey,
+            instanceName: Self.testInstanceName,
             enabled: true,
             sampleRate: 1.0,
+            remoteConfigClient: nil,
             urlSessionConfiguration: Self.testSessionConfiguration
         )
 
@@ -594,10 +650,10 @@ final class DiagnosticsClientTests: XCTestCase {
         }
 
         // Wait a bit for initial value
-        try await Task.sleep(nanoseconds: 100_000_000) // 0.1 seconds
+        try await Task.sleep(nanoseconds: NSEC_PER_SEC / 10) // 0.1 seconds
 
         // Change enabled state
-        await client.setEnabled(false)
+        await client.updateConfig(enabled: false)
 
         // Wait for task to complete (ensures all array modifications are done)
         await observerTask.value
@@ -612,8 +668,10 @@ final class DiagnosticsClientTests: XCTestCase {
     func testObserveIsRunningNotifiesOnSampleRateChange() async throws {
         let client = DiagnosticsClient(
             apiKey: Self.testApiKey,
+            instanceName: Self.testInstanceName,
             enabled: true,
             sampleRate: 1.0,
+            remoteConfigClient: nil,
             urlSessionConfiguration: Self.testSessionConfiguration
         )
 
@@ -633,10 +691,10 @@ final class DiagnosticsClientTests: XCTestCase {
         }
 
         // Wait a bit for initial value
-        try await Task.sleep(nanoseconds: 100_000_000) // 0.1 seconds
+        try await Task.sleep(nanoseconds: NSEC_PER_SEC / 10) // 0.1 seconds
 
         // Change sample rate to 0
-        await client.setSampleRate(0.0)
+        await client.updateConfig(sampleRate: 0.0)
 
         // Wait for task to complete (ensures all array modifications are done)
         await observerTask.value
@@ -651,8 +709,10 @@ final class DiagnosticsClientTests: XCTestCase {
     func testObserveIsRunningMultipleObservers() async throws {
         let client = DiagnosticsClient(
             apiKey: Self.testApiKey,
+            instanceName: Self.testInstanceName,
             enabled: true,
             sampleRate: 1.0,
+            remoteConfigClient: nil,
             urlSessionConfiguration: Self.testSessionConfiguration
         )
 
@@ -687,10 +747,10 @@ final class DiagnosticsClientTests: XCTestCase {
         }
 
         // Wait for initial values
-        try await Task.sleep(nanoseconds: 100_000_000) // 0.1 seconds
+        try await Task.sleep(nanoseconds: NSEC_PER_SEC / 10) // 0.1 seconds
 
         // Change state
-        await client.setEnabled(false)
+        await client.updateConfig(enabled: false)
 
         await fulfillment(of: [expectation1, expectation2], timeout: 5.0)
 
@@ -711,8 +771,10 @@ final class DiagnosticsClientTests: XCTestCase {
     func testStopObservingIsRunning() async throws {
         let client = DiagnosticsClient(
             apiKey: Self.testApiKey,
+            instanceName: Self.testInstanceName,
             enabled: true,
             sampleRate: 1.0,
+            remoteConfigClient: nil,
             urlSessionConfiguration: Self.testSessionConfiguration
         )
 
@@ -726,21 +788,21 @@ final class DiagnosticsClientTests: XCTestCase {
         }
 
         // Wait for initial value
-        try await Task.sleep(nanoseconds: 100_000_000) // 0.1 seconds
+        try await Task.sleep(nanoseconds: NSEC_PER_SEC / 10) // 0.1 seconds
 
         // Stop observing
         await client.stopObservingIsRunning(observerId)
 
         // Wait a bit for stream to finish
-        try await Task.sleep(nanoseconds: 100_000_000) // 0.1 seconds
+        try await Task.sleep(nanoseconds: NSEC_PER_SEC / 10) // 0.1 seconds
 
         let countAfterStop = receivedValues.count
 
         // Make a change (should not notify stopped observer)
-        await client.setEnabled(false)
+        await client.updateConfig(enabled: false)
 
         // Wait a bit
-        try await Task.sleep(nanoseconds: 100_000_000) // 0.1 seconds
+        try await Task.sleep(nanoseconds: NSEC_PER_SEC / 10) // 0.1 seconds
 
         // Should not have received any more values
         XCTAssertEqual(receivedValues.count, countAfterStop)
@@ -752,8 +814,10 @@ final class DiagnosticsClientTests: XCTestCase {
     func testObserveIsRunningDoesNotNotifyWhenValueUnchanged() async throws {
         let client = DiagnosticsClient(
             apiKey: Self.testApiKey,
+            instanceName: Self.testInstanceName,
             enabled: true,
             sampleRate: 1.0,
+            remoteConfigClient: nil,
             urlSessionConfiguration: Self.testSessionConfiguration
         )
 
@@ -767,16 +831,16 @@ final class DiagnosticsClientTests: XCTestCase {
         }
 
         // Wait for initial value
-        try await Task.sleep(nanoseconds: 100_000_000) // 0.1 seconds
+        try await Task.sleep(nanoseconds: NSEC_PER_SEC / 10) // 0.1 seconds
 
         let initialCount = receivedValues.count
         XCTAssertEqual(initialCount, 1, "Should have received initial value")
 
         // Set to the same enabled state (no change)
-        await client.setEnabled(true)
+        await client.updateConfig(enabled: true)
 
         // Wait to ensure no notification
-        try await Task.sleep(nanoseconds: 200_000_000) // 0.2 seconds
+        try await Task.sleep(nanoseconds: NSEC_PER_SEC / 5) // 0.2 seconds
 
         // Should not have received another notification
         XCTAssertEqual(receivedValues.count, initialCount, "Should not notify when value doesn't change")
@@ -788,8 +852,10 @@ final class DiagnosticsClientTests: XCTestCase {
     func testObserveIsRunningWithDisabledClient() async throws {
         let client = DiagnosticsClient(
             apiKey: Self.testApiKey,
+            instanceName: Self.testInstanceName,
             enabled: false,
             sampleRate: 1.0,
+            remoteConfigClient: nil,
             urlSessionConfiguration: Self.testSessionConfiguration
         )
 
@@ -806,8 +872,10 @@ final class DiagnosticsClientTests: XCTestCase {
     func testObserveIsRunningReenableClient() async throws {
         let client = DiagnosticsClient(
             apiKey: Self.testApiKey,
+            instanceName: Self.testInstanceName,
             enabled: false,
             sampleRate: 1.0,
+            remoteConfigClient: nil,
             urlSessionConfiguration: Self.testSessionConfiguration
         )
 
@@ -827,10 +895,10 @@ final class DiagnosticsClientTests: XCTestCase {
         }
 
         // Wait a bit for initial value
-        try await Task.sleep(nanoseconds: 100_000_000) // 0.1 seconds
+        try await Task.sleep(nanoseconds: NSEC_PER_SEC / 10) // 0.1 seconds
 
         // Re-enable client
-        await client.setEnabled(true)
+        await client.updateConfig(enabled: true)
 
         // Wait for task to complete (ensures all array modifications are done)
         await observerTask.value
@@ -846,23 +914,26 @@ final class DiagnosticsClientTests: XCTestCase {
         // Start with enabled client
         let client = DiagnosticsClient(
             apiKey: Self.testApiKey,
+            instanceName: Self.testInstanceName,
             enabled: true,
             sampleRate: 1.0,
+            remoteConfigClient: nil,
             urlSessionConfiguration: Self.testSessionConfiguration
         )
 
         // Wait for initial setup (initialization task sets basic diagnostics tags)
         await client.initializationTask?.value
+        await client.isRunningObserverTask?.value
 
         // Check the in-memory counter directly
         let counterAfterInit = await client.storage.counters["sampled.in.and.enabled"]
         XCTAssertEqual(counterAfterInit, 1, "Should have incremented counter once during initialization")
 
         // Now disable and re-enable the client
-        await client.setEnabled(false)
-        try await Task.sleep(nanoseconds: 100_000_000) // 0.1 seconds
-        await client.setEnabled(true)
-        try await Task.sleep(nanoseconds: 200_000_000) // 0.2 seconds
+        await client.updateConfig(enabled: false)
+        try await Task.sleep(nanoseconds: NSEC_PER_SEC / 10) // 0.1 seconds
+        await client.updateConfig(enabled: true)
+        try await Task.sleep(nanoseconds: NSEC_PER_SEC / 5) // 0.2 seconds
 
         // Check the counter again - it should still be 1
         let counterAfterReEnable = await client.storage.counters["sampled.in.and.enabled"]
@@ -872,6 +943,8 @@ final class DiagnosticsClientTests: XCTestCase {
     // MARK: - Concurrent Operations Test
 
     func testConcurrentOperations() async throws {
+        try skipIfURLProtocolUnsupported()
+
         var capturedRequest: URLRequest?
         let payloadExpectation = XCTestExpectation(description: "Payload captured")
 
@@ -932,6 +1005,8 @@ final class DiagnosticsClientTests: XCTestCase {
     // MARK: - Historic Data Tests
 
     func testLoadAndUploadPreviousSessionData() async throws {
+        try skipIfURLProtocolUnsupported()
+
         var uploadCount = 0
         var capturedRequests: [URLRequest] = []
         let uploadExpectation = XCTestExpectation(description: "Previous session data uploaded")
@@ -943,6 +1018,7 @@ final class DiagnosticsClientTests: XCTestCase {
             instanceName: "test-instance",
             enabled: true,
             sampleRate: 1.0,
+            remoteConfigClient: nil,
             urlSessionConfiguration: Self.testSessionConfiguration
         )
 
@@ -972,6 +1048,7 @@ final class DiagnosticsClientTests: XCTestCase {
             instanceName: "test-instance",
             enabled: true,
             sampleRate: 1.0,
+            remoteConfigClient: nil,
             urlSessionConfiguration: Self.testSessionConfiguration
         )
 
@@ -1010,10 +1087,12 @@ final class DiagnosticsClientTests: XCTestCase {
     }
 
     func testMultiplePreviousSessionsUpload() async throws {
+        try skipIfURLProtocolUnsupported()
+
         // Note: This test simulates app restarts by creating sessions with small delays
         // In practice, each DiagnosticsClient creates its own timestamp internally,
         // so we create sessions with small gaps to ensure they're treated as separate
-        
+
         var uploadCount = 0
         var capturedRequests: [URLRequest] = []
         let uploadExpectation = XCTestExpectation(description: "Historic sessions uploaded")
@@ -1021,10 +1100,10 @@ final class DiagnosticsClientTests: XCTestCase {
         // Create a previous session and persist
         let oldSession = DiagnosticsClient(
             apiKey: Self.testApiKey,
-            serverZone: .US,
-            instanceName: "test-instance",
+            instanceName: Self.testInstanceName,
             enabled: true,
             sampleRate: 1.0,
+            remoteConfigClient: nil,
             urlSessionConfiguration: Self.testSessionConfiguration
         )
 
@@ -1034,7 +1113,7 @@ final class DiagnosticsClientTests: XCTestCase {
         await oldSession.stopFlushTimer()
 
         // Wait a moment to ensure timestamps are different
-        try await Task.sleep(nanoseconds: 1_100_000_000) // 1.1 seconds
+        try await Task.sleep(nanoseconds: NSEC_PER_SEC) // 1 seconds
 
         // Create new session that should upload previous session
         TestDiagnosticsHandler.responseHandler = { request in
@@ -1046,10 +1125,10 @@ final class DiagnosticsClientTests: XCTestCase {
 
         let newSession = DiagnosticsClient(
             apiKey: Self.testApiKey,
-            serverZone: .US,
-            instanceName: "test-instance",
+            instanceName: Self.testInstanceName,
             enabled: true,
             sampleRate: 1.0,
+            remoteConfigClient: nil,
             urlSessionConfiguration: Self.testSessionConfiguration
         )
 
@@ -1062,15 +1141,17 @@ final class DiagnosticsClientTests: XCTestCase {
     }
 
     func testPreviousSessionDataClearedAfterUpload() async throws {
+        try skipIfURLProtocolUnsupported()
+
         let uploadExpectation = XCTestExpectation(description: "Historic data uploaded")
 
         // Create and persist old session data
         let oldSession = DiagnosticsClient(
             apiKey: Self.testApiKey,
-            serverZone: .US,
-            instanceName: "test-instance",
+            instanceName: Self.testInstanceName,
             enabled: true,
             sampleRate: 1.0,
+            remoteConfigClient: nil,
             urlSessionConfiguration: Self.testSessionConfiguration
         )
 
@@ -1086,10 +1167,10 @@ final class DiagnosticsClientTests: XCTestCase {
 
         let firstNewSession = DiagnosticsClient(
             apiKey: Self.testApiKey,
-            serverZone: .US,
-            instanceName: "test-instance",
+            instanceName: Self.testInstanceName,
             enabled: true,
             sampleRate: 1.0,
+            remoteConfigClient: nil,
             urlSessionConfiguration: Self.testSessionConfiguration
         )
 
@@ -1109,11 +1190,12 @@ final class DiagnosticsClientTests: XCTestCase {
             instanceName: "test-instance",
             enabled: true,
             sampleRate: 1.0,
+            remoteConfigClient: nil,
             urlSessionConfiguration: Self.testSessionConfiguration
         )
 
         // Give it a moment to potentially upload (but it shouldn't)
-        try await Task.sleep(nanoseconds: 500_000_000) // 0.5 seconds
+        try await Task.sleep(nanoseconds: NSEC_PER_SEC / 2) // 0.5 seconds
 
         // Should not have uploaded historic data again (might upload current session data from auto-instrumentation)
         // The key is that the old_data tag should not appear in any uploads
@@ -1123,11 +1205,15 @@ final class DiagnosticsClientTests: XCTestCase {
     // MARK: - Error Handling Tests
 
     func testHandlesInvalidURL() async throws {
+        try skipIfURLProtocolUnsupported()
+
         // DiagnosticsClient should handle this gracefully
         let client = DiagnosticsClient(
             apiKey: "invalid api key with spaces",
+            instanceName: Self.testInstanceName,
             enabled: true,
             sampleRate: 1.0,
+            remoteConfigClient: nil,
             urlSessionConfiguration: Self.testSessionConfiguration
         )
 
@@ -1139,6 +1225,8 @@ final class DiagnosticsClientTests: XCTestCase {
     }
 
     func testHandlesNetworkTimeout() async throws {
+        try skipIfURLProtocolUnsupported()
+
         // Note: This test verifies that the client doesn't crash when a request times out
         // We simulate a slow response rather than a true timeout for test speed
         TestDiagnosticsHandler.responseHandler = { request in
@@ -1157,6 +1245,8 @@ final class DiagnosticsClientTests: XCTestCase {
     }
 
     func testHandles4xxError() async throws {
+        try skipIfURLProtocolUnsupported()
+
         TestDiagnosticsHandler.responseHandler = TestDiagnosticsHandler.errorResponseHandler(statusCode: 400)
 
         let client = makeDiagnosticsClient()
@@ -1170,6 +1260,8 @@ final class DiagnosticsClientTests: XCTestCase {
     }
 
     func testHandles5xxError() async throws {
+        try skipIfURLProtocolUnsupported()
+
         TestDiagnosticsHandler.responseHandler = TestDiagnosticsHandler.errorResponseHandler(statusCode: 503)
 
         let client = makeDiagnosticsClient()
@@ -1187,9 +1279,10 @@ final class DiagnosticsClientTests: XCTestCase {
     private func makeDiagnosticsClient() -> DiagnosticsClient {
         return DiagnosticsClient(
             apiKey: Self.testApiKey,
-            serverZone: .US,
+            instanceName: Self.testInstanceName,
             enabled: true,
             sampleRate: 1.0,
+            remoteConfigClient: nil,
             urlSessionConfiguration: Self.testSessionConfiguration
         )
     }

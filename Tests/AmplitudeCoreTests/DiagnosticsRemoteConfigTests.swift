@@ -19,6 +19,13 @@ final class DiagnosticsRemoteConfigTests: XCTestCase {
         TestRemoteConfigStorage.shared.reset()
     }
 
+    /// Helper to skip tests that require URLProtocol on watchOS (where it doesn't work)
+    private func skipIfURLProtocolUnsupported() throws {
+        #if os(watchOS)
+        throw XCTSkip("URLProtocol-based network mocking is unreliable on watchOS")
+        #endif
+    }
+
     // MARK: - Enable/Disable Tests
 
     func testDiagnosticsTurnsOnFromRemoteConfig() async throws {
@@ -34,16 +41,17 @@ final class DiagnosticsRemoteConfigTests: XCTestCase {
         ]
         TestRemoteConfigStorage.shared.setNextConfig(remoteConfig)
 
+        let remoteConfigClient = makeRemoteConfigClient()
+
         // Create client with diagnostics initially disabled
         let diagnosticsClient = DiagnosticsClient(
             apiKey: Self.testApiKey,
+            instanceName: "$default_instance",
             enabled: false,
             sampleRate: 1.0,
+            remoteConfigClient: remoteConfigClient,
             urlSessionConfiguration: TestDiagnosticsHandler.testSessionConfiguration
         )
-
-        let remoteConfigClient = makeRemoteConfigClient()
-        await diagnosticsClient.setRemoteConfigClient(remoteConfigClient)
 
         // Initially disabled
         let wasRunning = await diagnosticsClient.isRunning
@@ -54,7 +62,7 @@ final class DiagnosticsRemoteConfigTests: XCTestCase {
         await fulfillment(of: [expectation], timeout: 3.0)
 
         // Give it time for the subscription callback to execute
-        try await Task.sleep(nanoseconds: 500_000_000) // 0.5 seconds
+        try await Task.sleep(nanoseconds: NSEC_PER_SEC / 2) // 0.5 seconds
 
         // Should now be enabled from remote config
         let isRunningAfter = await diagnosticsClient.isRunning
@@ -73,16 +81,17 @@ final class DiagnosticsRemoteConfigTests: XCTestCase {
         ]
         TestRemoteConfigStorage.shared.setNextConfig(remoteConfig)
 
+        let remoteConfigClient = makeRemoteConfigClient()
+
         // Create client with diagnostics initially enabled
         let diagnosticsClient = DiagnosticsClient(
             apiKey: Self.testApiKey,
+            instanceName: "$default_instance",
             enabled: true,
             sampleRate: 1.0,
+            remoteConfigClient: remoteConfigClient,
             urlSessionConfiguration: TestDiagnosticsHandler.testSessionConfiguration
         )
-
-        let remoteConfigClient = makeRemoteConfigClient()
-        await diagnosticsClient.setRemoteConfigClient(remoteConfigClient)
 
         // Initially enabled
         let wasRunning = await diagnosticsClient.isRunning
@@ -93,7 +102,7 @@ final class DiagnosticsRemoteConfigTests: XCTestCase {
         await fulfillment(of: [expectation], timeout: 3.0)
 
         // Give it time for the subscription callback to execute
-        try await Task.sleep(nanoseconds: 500_000_000) // 0.5 seconds
+        try await Task.sleep(nanoseconds: NSEC_PER_SEC / 2) // 0.5 seconds
 
         // Should now be disabled from remote config
         let isRunningAfter = await diagnosticsClient.isRunning
@@ -115,23 +124,24 @@ final class DiagnosticsRemoteConfigTests: XCTestCase {
         ]
         TestRemoteConfigStorage.shared.setNextConfig(remoteConfig)
 
+        let remoteConfigClient = makeRemoteConfigClient()
+
         // Create client with enabled but we'll check if remote config applies
         let diagnosticsClient = DiagnosticsClient(
             apiKey: Self.testApiKey,
+            instanceName: "$default_instance",
             enabled: true,
             sampleRate: 0,
+            remoteConfigClient: remoteConfigClient,
             urlSessionConfiguration: TestDiagnosticsHandler.testSessionConfiguration
         )
-
-        let remoteConfigClient = makeRemoteConfigClient()
-        await diagnosticsClient.setRemoteConfigClient(remoteConfigClient)
 
         // Wait for remote config to be fetched and applied
         let expectation = remoteConfigClient.didFetchRemoteExpectation
         await fulfillment(of: [expectation], timeout: 3.0)
 
         // Give it time for the subscription callback to execute
-        try await Task.sleep(nanoseconds: 500_000_000) // 0.5 seconds
+        try await Task.sleep(nanoseconds: NSEC_PER_SEC / 2) // 0.5 seconds
 
         // Should remain running (was already running, remote confirms it)
         let isRunningAfter = await diagnosticsClient.isRunning
@@ -151,22 +161,23 @@ final class DiagnosticsRemoteConfigTests: XCTestCase {
         ]
         TestRemoteConfigStorage.shared.setNextConfig(remoteConfig)
 
+        let remoteConfigClient = makeRemoteConfigClient()
+
         // Create client with diagnostics disabled but good sample rate
         let diagnosticsClient = DiagnosticsClient(
             apiKey: Self.testApiKey,
+            instanceName: "$default_instance",
             enabled: false,
             sampleRate: 1.0, // Good sample rate locally
+            remoteConfigClient: remoteConfigClient,
             urlSessionConfiguration: TestDiagnosticsHandler.testSessionConfiguration
         )
-
-        let remoteConfigClient = makeRemoteConfigClient()
-        await diagnosticsClient.setRemoteConfigClient(remoteConfigClient)
 
         // Wait for remote config
         let expectation = remoteConfigClient.didFetchRemoteExpectation
         await fulfillment(of: [expectation], timeout: 3.0)
 
-        try await Task.sleep(nanoseconds: 500_000_000)
+        try await Task.sleep(nanoseconds: NSEC_PER_SEC / 2)
 
         // Should be enabled now (enabled=true from remote, sample_rate stays 1.0 from local)
         let isRunningAfter = await diagnosticsClient.isRunning
@@ -186,22 +197,23 @@ final class DiagnosticsRemoteConfigTests: XCTestCase {
         ]
         TestRemoteConfigStorage.shared.setNextConfig(remoteConfig)
 
+        let remoteConfigClient = makeRemoteConfigClient()
+
         // Create client with diagnostics enabled and we'll verify remote sample rate applies
         let diagnosticsClient = DiagnosticsClient(
             apiKey: Self.testApiKey,
+            instanceName: "$default_instance",
             enabled: true,
             sampleRate: 0,
+            remoteConfigClient: remoteConfigClient,
             urlSessionConfiguration: TestDiagnosticsHandler.testSessionConfiguration
         )
-
-        let remoteConfigClient = makeRemoteConfigClient()
-        await diagnosticsClient.setRemoteConfigClient(remoteConfigClient)
 
         // Wait for remote config
         let expectation = remoteConfigClient.didFetchRemoteExpectation
         await fulfillment(of: [expectation], timeout: 3.0)
 
-        try await Task.sleep(nanoseconds: 500_000_000)
+        try await Task.sleep(nanoseconds: NSEC_PER_SEC / 2)
 
         // Should remain running (enabled=true local, sample_rate=1.0 from remote)
         let isRunningAfter = await diagnosticsClient.isRunning
@@ -222,21 +234,22 @@ final class DiagnosticsRemoteConfigTests: XCTestCase {
         ]
         TestRemoteConfigStorage.shared.setNextConfig(remoteConfig)
 
+        let remoteConfigClient = makeRemoteConfigClient()
+
         let diagnosticsClient = DiagnosticsClient(
             apiKey: Self.testApiKey,
+            instanceName: "$default_instance",
             enabled: true,
             sampleRate: 1.0,
+            remoteConfigClient: remoteConfigClient,
             urlSessionConfiguration: TestDiagnosticsHandler.testSessionConfiguration
         )
-
-        let remoteConfigClient = makeRemoteConfigClient()
-        await diagnosticsClient.setRemoteConfigClient(remoteConfigClient)
 
         // Wait for remote config
         let expectation = remoteConfigClient.didFetchRemoteExpectation
         await fulfillment(of: [expectation], timeout: 3.0)
 
-        try await Task.sleep(nanoseconds: 100_000_000)
+        try await Task.sleep(nanoseconds: NSEC_PER_SEC / 10)
 
         // Should ignore invalid types and keep local config
         let isRunningAfter = await diagnosticsClient.isRunning
@@ -244,6 +257,8 @@ final class DiagnosticsRemoteConfigTests: XCTestCase {
     }
 
     func testRemoteConfigSetsSDKVersionTag() async throws {
+        try skipIfURLProtocolUnsupported()
+
         var capturedRequest: URLRequest?
         let uploadExpectation = XCTestExpectation(description: "Data uploaded")
 
@@ -265,21 +280,22 @@ final class DiagnosticsRemoteConfigTests: XCTestCase {
         ]
         TestRemoteConfigStorage.shared.setNextConfig(remoteConfig)
 
+        let remoteConfigClient = makeRemoteConfigClient()
+
         let diagnosticsClient = DiagnosticsClient(
             apiKey: Self.testApiKey,
+            instanceName: "$default_instance",
             enabled: true,
             sampleRate: 1.0,
+            remoteConfigClient: remoteConfigClient,
             urlSessionConfiguration: TestDiagnosticsHandler.testSessionConfiguration
         )
-
-        let remoteConfigClient = makeRemoteConfigClient()
-        await diagnosticsClient.setRemoteConfigClient(remoteConfigClient)
 
         // Wait for remote config
         let configExpectation = remoteConfigClient.didFetchRemoteExpectation
         await fulfillment(of: [configExpectation], timeout: 3.0)
 
-        try await Task.sleep(nanoseconds: 200_000_000) // 0.2 seconds for tag to be set
+        try await Task.sleep(nanoseconds: NSEC_PER_SEC / 5) // 0.2 seconds for tag to be set
 
         // Flush to upload
         await diagnosticsClient.flush()

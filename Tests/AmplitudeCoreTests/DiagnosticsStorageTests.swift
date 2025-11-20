@@ -19,7 +19,6 @@ final class DiagnosticsStorageTests: XCTestCase {
     override func setUp() async throws {
         logger = OSLogger(logLevel: .error)
         storage = DiagnosticsStorage(
-            apiKey: testApiKey,
             instanceName: "test-instance",
             sessionStartAt: testTimestamp,
             logger: logger,
@@ -274,7 +273,6 @@ final class DiagnosticsStorageTests: XCTestCase {
         // It will load the old session's data as "historic"
         let newTimestamp = testTimestamp + 1
         let newStorage = DiagnosticsStorage(
-            apiKey: testApiKey,
             instanceName: "test-instance",
             sessionStartAt: newTimestamp,
             logger: logger
@@ -309,7 +307,6 @@ final class DiagnosticsStorageTests: XCTestCase {
         // Simulate restart with newer timestamp
         let newTimestamp = testTimestamp + 1
         let newStorage = DiagnosticsStorage(
-            apiKey: testApiKey,
             instanceName: "test-instance",
             sessionStartAt: newTimestamp,
             logger: logger
@@ -343,7 +340,6 @@ final class DiagnosticsStorageTests: XCTestCase {
         // Simulate restart with newer timestamp
         let newTimestamp = testTimestamp + 1
         let newStorage = DiagnosticsStorage(
-            apiKey: testApiKey,
             instanceName: "test-instance",
             sessionStartAt: newTimestamp,
             logger: logger
@@ -384,7 +380,6 @@ final class DiagnosticsStorageTests: XCTestCase {
         // Simulate restart with newer timestamp
         let newTimestamp = testTimestamp + 1
         let newStorage = DiagnosticsStorage(
-            apiKey: testApiKey,
             instanceName: "test-instance",
             sessionStartAt: newTimestamp,
             logger: logger
@@ -433,7 +428,6 @@ final class DiagnosticsStorageTests: XCTestCase {
         // Simulate restart with newer timestamp
         let newTimestamp = testTimestamp + 1
         let newStorage = DiagnosticsStorage(
-            apiKey: testApiKey,
             instanceName: "test-instance",
             sessionStartAt: newTimestamp,
             logger: logger
@@ -468,7 +462,6 @@ final class DiagnosticsStorageTests: XCTestCase {
         // Create storage with old timestamp
         let oldTimestamp = Date().timeIntervalSince1970 - 3600 // 1 hour ago
         let oldStorage = DiagnosticsStorage(
-            apiKey: testApiKey,
             instanceName: "test-instance",
             sessionStartAt: oldTimestamp,
             logger: logger
@@ -513,7 +506,6 @@ final class DiagnosticsStorageTests: XCTestCase {
 
         for (index, timestamp) in timestamps.enumerated() {
             let oldStorage = DiagnosticsStorage(
-                apiKey: testApiKey,
                 instanceName: "test-instance",
                 sessionStartAt: timestamp,
                 logger: logger
@@ -554,7 +546,7 @@ final class DiagnosticsStorageTests: XCTestCase {
         await storage.setTag(name: "auto_tag", value: "auto_value")
 
         // Wait for persistence timer to fire
-        try await Task.sleep(nanoseconds: 200_000_000) // 0.2 seconds
+        try await Task.sleep(nanoseconds: NSEC_PER_SEC / 5) // 0.2 seconds
 
         // Check that tagsChanged flag was cleared (indicating persistence happened)
         let tagsChanged = await storage.tagsChanged
@@ -590,11 +582,9 @@ final class DiagnosticsStorageTests: XCTestCase {
         XCTAssertTrue(snapshot.events.isEmpty)
     }
 
-    func testSpecialCharactersInApiKey() async throws {
-        let specialApiKey = "test@api#key!2024"
+    func testSpecialCharactersInInstanceName() async throws {
         let specialStorage = DiagnosticsStorage(
-            apiKey: specialApiKey,
-            instanceName: "test",
+            instanceName: "test@api#key!2024",
             sessionStartAt: testTimestamp,
             logger: logger
         )
@@ -606,24 +596,8 @@ final class DiagnosticsStorageTests: XCTestCase {
         try await specialStorage.removeAll()
     }
 
-    func testNilInstanceName() async throws {
-        let nilInstanceStorage = DiagnosticsStorage(
-            apiKey: testApiKey,
-            instanceName: nil,
-            sessionStartAt: testTimestamp,
-            logger: logger
-        )
-
-        await nilInstanceStorage.setTag(name: "test", value: "value")
-        await nilInstanceStorage.persistIfNeeded()
-
-        // Should use default instance name
-        try await nilInstanceStorage.removeAll()
-    }
-
     func testEmptyInstanceName() async throws {
         let emptyInstanceStorage = DiagnosticsStorage(
-            apiKey: testApiKey,
             instanceName: "",
             sessionStartAt: testTimestamp,
             logger: logger

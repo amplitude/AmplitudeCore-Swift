@@ -10,8 +10,7 @@ import Foundation
 @available(macOS 10.15, iOS 13.0, watchOS 6.0, tvOS 13.0, *)
 actor DiagnosticsStorage {
 
-    let apiKey: String
-    let instanceName: String?
+    let instanceName: String
     let logger: CoreLogger
     let sessionStartAt: TimeInterval
     private let persistIntervalNanoSeconds: UInt64
@@ -37,16 +36,13 @@ actor DiagnosticsStorage {
     static let defaultPersistInterval: UInt64 = 1_000_000_000   // 1s
     static private let maxEventCount: Int = 10
 
-    private let sanitizedApiKey: String
     private let sanitizedInstance: String
 
-    init(apiKey: String, instanceName: String? = nil, sessionStartAt: TimeInterval, logger: CoreLogger, persistIntervalNanoSeconds: UInt64 = defaultPersistInterval) {
-        self.apiKey = apiKey
+    init(instanceName: String, sessionStartAt: TimeInterval, logger: CoreLogger, persistIntervalNanoSeconds: UInt64 = defaultPersistInterval) {
         self.instanceName = instanceName
         self.logger = logger
         self.sessionStartAt = sessionStartAt
-        self.sanitizedApiKey = Self.sanitize(apiKey)
-        self.sanitizedInstance = Self.sanitize(Self.normalizeInstanceName(instanceName))
+        self.sanitizedInstance = Self.sanitize(instanceName)
         self.persistIntervalNanoSeconds = persistIntervalNanoSeconds
     }
 
@@ -131,13 +127,12 @@ actor DiagnosticsStorage {
             }
 
             // Also remove rotated event log files
-            let identifier = storageIdentifier()
             let contents = (try? fileManager.contentsOfDirectory(at: directory,
                                                                  includingPropertiesForKeys: nil,
                                                                  options: [])) ?? []
             for url in contents {
                 let name = url.lastPathComponent
-                if name.hasPrefix("events-\(identifier)-") && name.hasSuffix(".log") {
+                if name.hasPrefix("events-") && name.hasSuffix(".log") {
                     try? fileManager.removeItem(at: url)
                 }
             }
@@ -160,16 +155,16 @@ actor DiagnosticsStorage {
                                                     appropriateFor: nil,
                                                     create: true)
 
-            let apiKeyDirectory = baseDirectory
+            let instanceDirectory = baseDirectory
                 .appendingPathComponent(Self.storagePrefix, isDirectory: true)
-                .appendingPathComponent(apiKey, isDirectory: true)
+                .appendingPathComponent(sanitizedInstance, isDirectory: true)
 
-            guard fileManager.fileExists(atPath: apiKeyDirectory.path) else {
+            guard fileManager.fileExists(atPath: instanceDirectory.path) else {
                 return snapshots
             }
 
             let sessionDirs = try fileManager.contentsOfDirectory(
-                at: apiKeyDirectory,
+                at: instanceDirectory,
                 includingPropertiesForKeys: [.isDirectoryKey],
                 options: [.skipsHiddenFiles]
             )
@@ -303,17 +298,16 @@ actor DiagnosticsStorage {
 
     func removeAll() throws {
         let directory = try storageDirectory()
-        let identifier = storageIdentifier()
         let fileManager = FileManager.default
         let contents = (try? fileManager.contentsOfDirectory(at: directory,
                                                              includingPropertiesForKeys: nil,
                                                              options: [])) ?? []
         for url in contents {
             let name = url.lastPathComponent
-            if name.hasPrefix("tags-\(identifier)") || 
-               name.hasPrefix("counters-\(identifier)") || 
-               name.hasPrefix("histograms-\(identifier)") || 
-               name.hasPrefix("events-\(identifier)") {
+            if name.hasPrefix("tags") ||
+               name.hasPrefix("counters") ||
+               name.hasPrefix("histograms") ||
+               name.hasPrefix("events") {
                 try fileManager.removeItem(at: url)
             }
         }
@@ -327,7 +321,7 @@ actor DiagnosticsStorage {
                                                 create: true)
         let storageDirectory = baseDirectory
             .appendingPathComponent(Self.storagePrefix, isDirectory: true)
-            .appendingPathComponent(apiKey, isDirectory: true)
+            .appendingPathComponent(sanitizedInstance, isDirectory: true)
             .appendingPathComponent(String(sessionStartAt), isDirectory: true)
 
         try fileManager.createDirectory(at: storageDirectory,
@@ -336,24 +330,20 @@ actor DiagnosticsStorage {
         return storageDirectory
     }
 
-    private func storageIdentifier() -> String {
-        "\(sanitizedApiKey)-\(sanitizedInstance)"
-    }
-
     private func tagsFileURL(in directory: URL) -> URL {
-        directory.appendingPathComponent("tags-\(storageIdentifier()).json", isDirectory: false)
+        directory.appendingPathComponent("tags.json", isDirectory: false)
     }
 
     private func countersFileURL(in directory: URL) -> URL {
-        directory.appendingPathComponent("counters-\(storageIdentifier()).json", isDirectory: false)
+        directory.appendingPathComponent("counters.json", isDirectory: false)
     }
 
     private func histogramsFileURL(in directory: URL) -> URL {
-        directory.appendingPathComponent("histograms-\(storageIdentifier()).json", isDirectory: false)
+        directory.appendingPathComponent("histograms.json", isDirectory: false)
     }
 
     private func eventsFileURL(in directory: URL) -> URL {
-        directory.appendingPathComponent("events-\(storageIdentifier()).log", isDirectory: false)
+        directory.appendingPathComponent("events.log", isDirectory: false)
     }
 
     private func persist(tags: [String: String], in directory: URL) throws {
@@ -392,7 +382,7 @@ actor DiagnosticsStorage {
            let size = attributes[.size] as? NSNumber,
            size.intValue >= Self.maxEventsLogBytes {
             let timestamp = Int(Date().timeIntervalSince1970)
-            let rotatedName = "events-\(storageIdentifier())-\(timestamp).log"
+            let rotatedName = "events-\(timestamp).log"
             let rotatedURL = directory.appendingPathComponent(rotatedName, isDirectory: false)
             try fileManager.moveItem(at: url, to: rotatedURL)
             fileManager.createFile(atPath: url.path, contents: nil, attributes: nil)
@@ -443,27 +433,8 @@ actor DiagnosticsStorage {
     }
 
     private static func sanitize(_ value: String) -> String {
-        let allowed = CharacterSet.alphanumerics
-            .union(CharacterSet(charactersIn: "-_.$"))
-        var sanitized = ""
-        sanitized.reserveCapacity(value.count)
-
-        for scalar in value.unicodeScalars {
-            if allowed.contains(scalar) {
-                sanitized.append(Character(scalar))
-            } else {
-                sanitized.append("_")
-            }
-        }
-
-        return sanitized
-    }
-
-    private static func normalizeInstanceName(_ instanceName: String?) -> String {
-        guard let name = instanceName, !name.isEmpty else {
-            return "$default_instance"
-        }
-        return name
+        let hash = Hash.fnv1a64(value)
+        return String(format: "%016llx", hash)
     }
 
     // MARK: - Persistence Timer

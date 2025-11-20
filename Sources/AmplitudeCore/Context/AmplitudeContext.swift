@@ -18,8 +18,6 @@ public struct AmplitudeContext {
     public let remoteConfigClient: RemoteConfigClient
     public let logger: CoreLogger
 
-    private var remoteConfigSubscription: Any?
-
     @_spi(Internal)
     public let diagnosticsClient: CoreDiagnostics
 
@@ -27,16 +25,12 @@ public struct AmplitudeContext {
                 instanceName: String = "$default_instance",
                 serverZone: ServerZone = .US,
                 logger: CoreLogger = OSLogger(logLevel: .error)) {
-        let diagnosticsClient = DiagnosticsClient(apiKey: apiKey,
-                                                  serverZone: serverZone,
-                                                  instanceName: instanceName,
-                                                  logger: logger)
         self.init(apiKey: apiKey,
                   instanceName: instanceName,
                   serverZone: serverZone,
                   logger: logger,
-                  diagnosticsClient: diagnosticsClient)
-
+                  remoteConfigClient: nil,
+                  diagnosticsClient: nil)
     }
 
     @_spi(Internal)
@@ -44,23 +38,21 @@ public struct AmplitudeContext {
                 instanceName: String = "$default_instance",
                 serverZone: ServerZone = .US,
                 logger: CoreLogger = OSLogger(logLevel: .error),
-                diagnosticsClient: CoreDiagnostics) {
+                remoteConfigClient: RemoteConfigClient?,
+                diagnosticsClient: CoreDiagnostics?) {
         self.apiKey = apiKey
         self.instanceName = instanceName
         self.serverZone = serverZone
         self.logger = logger
-        let remoteConfigClient = RemoteConfigClient(apiKey: apiKey,
-                                                    serverZone: serverZone,
-                                                    instanceName: instanceName,
-                                                    logger: logger)
-        self.remoteConfigClient = remoteConfigClient
-        self.diagnosticsClient = diagnosticsClient
-
-        Task {
-            if let diagnosticsClient = diagnosticsClient as? DiagnosticsClient {
-                await diagnosticsClient.setRemoteConfigClient(remoteConfigClient)
-            }
-        }
+        self.remoteConfigClient = remoteConfigClient ?? RemoteConfigClient(apiKey: apiKey,
+                                                                           serverZone: serverZone,
+                                                                           instanceName: instanceName,
+                                                                           logger: logger)
+        self.diagnosticsClient = diagnosticsClient ?? DiagnosticsClient(apiKey: apiKey,
+                                                                        serverZone: serverZone,
+                                                                        instanceName: instanceName,
+                                                                        logger: logger,
+                                                                        remoteConfigClient: self.remoteConfigClient)
     }
 
 }

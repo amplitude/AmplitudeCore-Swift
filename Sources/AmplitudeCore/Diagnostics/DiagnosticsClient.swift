@@ -32,21 +32,22 @@ public actor DiagnosticsClient: CoreDiagnostics {
 
     private var enabled: Bool
     private var sampleRate: Double
-    private var remoteConfigSubscription: Sendable?
+    private nonisolated(unsafe) var remoteConfigSubscription: Sendable?
 
     var flushTask: Task<Void, Never>?
     
     private var isRunningContinuations: [UUID: AsyncStream<Bool>.Continuation] = [:]
-    private var isRunningObserverTask: Task<Void, Never>?
+    private(set) var isRunningObserverTask: Task<Void, Never>?
     private var isRunningObserverId: UUID?
     private(set) nonisolated(unsafe) var initializationTask: Task<Void, Never>?
 
     public init(apiKey: String,
                 serverZone: ServerZone = .US,
-                instanceName: String? = nil,
+                instanceName: String,
                 logger: CoreLogger = OSLogger(logLevel: .error),
                 enabled: Bool = true,
                 sampleRate: Double = DEFAULT_SAMPLE_RATE,
+                remoteConfigClient: RemoteConfigClient?,
                 urlSessionConfiguration: URLSessionConfiguration = .ephemeral) {
         let startTimestamp = Date().timeIntervalSince1970
         self.apiKey = apiKey
@@ -56,25 +57,27 @@ public actor DiagnosticsClient: CoreDiagnostics {
         self.urlSession = URLSession(configuration: urlSessionConfiguration)
         self.enabled = enabled
         self.sampleRate = sampleRate
-        self.storage = DiagnosticsStorage(apiKey: apiKey,
-                                          instanceName: instanceName,
+        self.storage = DiagnosticsStorage(instanceName: instanceName,
                                           sessionStartAt: startTimestamp,
                                           logger: logger)
-        let isRunning = enabled && Sample.isSessionInSample(seed: String(startTimestamp), sampleRate: Float(sampleRate))
+        let isRunning = enabled && Sample.isInSample(seed: String(startTimestamp), sampleRate: Float(sampleRate))
         self.isRunning = isRunning
+        self.remoteConfigClient = remoteConfigClient
+
+        remoteConfigSubscription = remoteConfigClient?.subscribe(key: Constants.RemoteConfig.Key.diagnostics) { config, _, _ in
+            guard let config else {
+                return
+            }
+
+            Task { [weak self] in
+                let enabled = config["enabled"] as? Bool
+                let sampleRate = config["sample_rate"] as? Double
+                await self?.updateConfig(enabled: enabled, sampleRate: sampleRate)
+            }
+        }
 
         initializationTask = Task { [weak self] in
-            guard let self else { return }
-            
-            async let flushOperation: Void = {
-                if await self.enabled {
-                    await self.flushStored()
-                }
-            }()
-            
-            async let observerSetup: Void = self.setupIsRunningObserver()
-            
-            _ = await (flushOperation, observerSetup)
+            await self?.setupIsRunningObserver()
         }
     }
 
@@ -85,13 +88,24 @@ public actor DiagnosticsClient: CoreDiagnostics {
             for await isRunning in stream {
                 guard let self, isRunning else { continue }
                 // Set basic diagnostics tags once and then unsubscribe
-                await self.setBasicDiagnosticsTags()
+
+                async let flushOperation: Void = {
+                    if await self.enabled {
+                        await self.flushPreviousSessions()
+                    }
+                }()
+
+                async let tagOperation: Void = await self.setBasicDiagnosticsTags()
+                async let crashCheckOperation: Void = await self.setupCrashCatch()
+
+                _ = await (flushOperation, tagOperation, crashCheckOperation)
+
                 await self.cleanupIsRunningObserver()
                 break
             }
         }
     }
-    
+
     private func cleanupIsRunningObserver() {
         if let observerId = isRunningObserverId {
             stopObservingIsRunning(observerId)
@@ -111,10 +125,6 @@ public actor DiagnosticsClient: CoreDiagnostics {
         guard isRunning else { return }
         await storage.setTags(tags)
         startFlushTimerIfNeeded()
-    }
-
-    public func increment(name: String) async {
-        await self.increment(name: name, size: 1)
     }
 
     public func increment(name: String, size: Int) async {
@@ -170,7 +180,8 @@ public actor DiagnosticsClient: CoreDiagnostics {
         await uploadSnapshot(snapshot)
     }
 
-    func flushStored() async {
+    func flushPreviousSessions() async {
+        guard enabled else { return }
         // Load historic data from previous sessions and upload them
         let historicSnapshots = await storage.loadAndClearHistoricData()
 
@@ -232,7 +243,7 @@ public actor DiagnosticsClient: CoreDiagnostics {
         guard flushTask == nil else { return }
 
         flushTask = Task { [weak self] in
-            try? await Task.sleep(nanoseconds: 300_000_000_000) // 5 min
+            try? await Task.sleep(nanoseconds: 300 * NSEC_PER_SEC) // 5 min
             guard let self else { return }
             await self.flush()
             await self.markFlushTimerFinished()
@@ -252,46 +263,26 @@ public actor DiagnosticsClient: CoreDiagnostics {
         await storage.persistIfNeeded()
     }
 
-    func setEnabled(_ enabled: Bool) {
-        self.enabled = enabled
-        updateIsRunning()
-    }
+    func updateConfig(enabled: Bool? = nil, sampleRate: Double? = nil) {
+        if let enabled {
+            self.enabled = enabled
+        }
+        if let sampleRate {
+            let clampedRate = max(0.0, min(1.0, sampleRate))
+            self.sampleRate = clampedRate
+        }
 
-    func setSampleRate(_ sampleRate: Double) {
-        // Clamp sample rate to valid range [0.0, 1.0]
-        let clampedRate = max(0.0, min(1.0, sampleRate))
-        self.sampleRate = clampedRate
         updateIsRunning()
     }
 
     private func updateIsRunning() {
         let oldValue = isRunning
-        isRunning = enabled && Sample.isSessionInSample(seed: String(self.startTimestamp), sampleRate: Float(sampleRate))
-        
+        isRunning = enabled && Sample.isInSample(seed: String(self.startTimestamp), sampleRate: Float(sampleRate))
+
         // Notify observers if value changed
         if oldValue != isRunning {
             for continuation in isRunningContinuations.values {
                 continuation.yield(isRunning)
-            }
-        }
-    }
-
-    func setRemoteConfigClient(_ remoteConfigClient: RemoteConfigClient) {
-        self.remoteConfigClient = remoteConfigClient
-
-        remoteConfigSubscription = remoteConfigClient.subscribe(key: Constants.RemoteConfig.Key.diagnostics) { config, _, _ in
-            guard let config else {
-                return
-            }
-
-            Task.detached { [weak self] in
-                if let enabled = config["enabled"] as? Bool {
-                    await self?.setEnabled(enabled)
-                }
-
-                if let sampleRate = config["sample_rate"] as? Double {
-                    await self?.setSampleRate(sampleRate)
-                }
             }
         }
     }
@@ -322,19 +313,7 @@ public actor DiagnosticsClient: CoreDiagnostics {
         var staticContext = [String: String]()
 
         let info = Bundle.main.infoDictionary
-        let localizedInfo = Bundle.main.localizedInfoDictionary
-        var app = [String: Any]()
-        if let info = info {
-            app.merge(info) { (_, new) in new }
-        }
-
-        if let localizedInfo = localizedInfo {
-            app.merge(localizedInfo) { (_, new) in new }
-        }
-
-        if app.count != 0 {
-            staticContext["version_name"] = app["CFBundleShortVersionString"] as? String ?? ""
-        }
+        staticContext["version_name"] = info?["CFBundleShortVersionString"] as? String ?? ""
 
         let device = await CoreDevice.current
         staticContext["device_manufacturer"] = await device.manufacturer
@@ -347,5 +326,16 @@ public actor DiagnosticsClient: CoreDiagnostics {
         staticContext["sdk.\(AmplitudeContext.coreLibraryName).version"] = AmplitudeContext.coreLibraryVersion
 
         await self.setTags(staticContext)
+    }
+
+    private func setupCrashCatch() async {
+        CrashCatcher.register()
+
+        if let crash = CrashCatcher.checkForPreviousCrash() {
+            CrashCatcher.clearCrashReport()
+            await increment(name: "analytics.crash")
+            let eventProperties = ["report": crash]
+            await recordEvent(name: "analytics.crash", properties: eventProperties)
+        }
     }
 }

@@ -12,7 +12,6 @@ import Foundation
 public protocol CoreDiagnostics: Actor {
     func setTag(name: String, value: String) async
     func setTags(_ tags: [String: String]) async
-    func increment(name: String) async
     func increment(name: String, size: Int) async
     func recordHistogram(name: String, value: Double) async
     func recordEvent(name: String, properties: [String: any Sendable]?) async
@@ -20,6 +19,45 @@ public protocol CoreDiagnostics: Actor {
     var isRunning: Bool { get }
     func observeIsRunning() -> (stream: AsyncStream<Bool>, id: UUID)
     func stopObservingIsRunning(_ id: UUID)
+}
+
+@available(iOS 13.0, macOS 10.15, watchOS 6.0, tvOS 13.0, *)
+@_spi(Internal)
+public extension CoreDiagnostics {
+
+    func increment(name: String) async {
+        await increment(name: name, size: 1)
+    }
+
+    nonisolated func setTag(name: String, value: String) {
+        Task.detached {
+            await self.setTag(name: name, value: value)
+        }
+    }
+
+    nonisolated func setTags(_ tags: [String: String]) {
+        Task.detached {
+            await self.setTags(tags)
+        }
+    }
+
+    nonisolated func increment(name: String, size: Int = 1) {
+        Task.detached {
+            await self.increment(name: name, size: size)
+        }
+    }
+
+    nonisolated func recordHistogram(name: String, value: Double) {
+        Task.detached {
+            await self.recordHistogram(name: name, value: value)
+        }
+    }
+
+    nonisolated func recordEvent(name: String, properties: [String: any Sendable]? = nil) {
+        Task.detached {
+            await self.recordEvent(name: name, properties: properties)
+        }
+    }
 }
 
 struct DiagnosticsEvent: Codable, Sendable {
@@ -101,103 +139,4 @@ struct DiagnosticsPayload: Codable {
 protocol StorageOutputStream: Sendable {
     func write(_ data: Data) throws
     func close() throws
-}
-
-enum JSONValue: Codable, Sendable {
-    case string(String)
-    case int(Int)
-    case double(Double)
-    case bool(Bool)
-    case array([JSONValue])
-    case dictionary([String: JSONValue])
-    case null
-
-    // Custom initializer to decode based on the JSON type
-    init(from decoder: Decoder) throws {
-        let container = try decoder.singleValueContainer()
-
-        // Attempt to decode each type, in order of most specific to least
-        if container.decodeNil() {
-            self = .null
-        } else if let boolValue = try? container.decode(Bool.self) {
-            self = .bool(boolValue)
-        } else if let intValue = try? container.decode(Int.self) {
-            self = .int(intValue)
-        } else if let doubleValue = try? container.decode(Double.self) {
-            self = .double(doubleValue)
-        } else if let stringValue = try? container.decode(String.self) {
-            self = .string(stringValue)
-        } else if let arrayValue = try? container.decode([JSONValue].self) {
-            self = .array(arrayValue)
-        } else if let dictValue = try? container.decode([String: JSONValue].self) {
-            self = .dictionary(dictValue)
-        } else {
-            throw DecodingError.typeMismatch(JSONValue.self,
-                                             DecodingError.Context(codingPath: decoder.codingPath,
-                                                                   debugDescription: "Unknown JSON type"))
-        }
-    }
-
-    func encode(to encoder: Encoder) throws {
-        var container = encoder.singleValueContainer()
-
-        switch self {
-        case .string(let str):
-            try container.encode(str)
-        case .int(let int):
-            try container.encode(int)
-        case .double(let dbl):
-            try container.encode(dbl)
-        case .bool(let bool):
-            try container.encode(bool)
-        case .array(let arr):
-            try container.encode(arr)
-        case .dictionary(let dict):
-            try container.encode(dict)
-        case .null:
-            try container.encodeNil()
-        }
-    }
-
-    // Helper to convert Any to JSONValue
-    static func from(_ value: Any) -> JSONValue? {
-        if let stringValue = value as? String {
-            return .string(stringValue)
-        } else if let boolValue = value as? Bool {
-            return .bool(boolValue)
-        } else if let intValue = value as? Int {
-            return .int(intValue)
-        } else if let doubleValue = value as? Double {
-            return .double(doubleValue)
-        } else if let floatValue = value as? Float {
-            return .double(Double(floatValue))
-        } else if let arrayValue = value as? [Any] {
-            let jsonValues = arrayValue.compactMap { JSONValue.from($0) }
-            return .array(jsonValues)
-        } else if let dictValue = value as? [String: Any] {
-            let jsonDict = dictValue.compactMapValues { JSONValue.from($0) }
-            return .dictionary(jsonDict)
-        }
-        return nil
-    }
-
-    // Helper to convert JSONValue back to Any
-    func toAny() -> any Sendable {
-        switch self {
-        case .string(let str):
-            return str
-        case .int(let int):
-            return int
-        case .double(let dbl):
-            return dbl
-        case .bool(let bool):
-            return bool
-        case .array(let arr):
-            return arr.map { $0.toAny() }
-        case .dictionary(let dict):
-            return dict.mapValues { $0.toAny() }
-        case .null:
-            return NSNull()
-        }
-    }
 }
