@@ -22,7 +22,7 @@ final class DiagnosticsStorageTests: XCTestCase {
             instanceName: "test-instance",
             sessionStartAt: testTimestamp,
             logger: logger,
-            persistIntervalNanoSeconds: 100_000_000 // 0.1 second for faster tests
+            persistIntervalNanoSeconds: NSEC_PER_SEC / 10 // 0.1 second for faster tests
         )
     }
 

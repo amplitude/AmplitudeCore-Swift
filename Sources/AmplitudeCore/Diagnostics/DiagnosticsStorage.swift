@@ -33,12 +33,11 @@ actor DiagnosticsStorage {
     private static let storagePrefix: String = "com.amplitude.diagnostics"
     private static let maxEventsLogBytes: Int = 256 * 1024
     private static let newlineData = Data([0x0A])
-    static let defaultPersistInterval: UInt64 = 1_000_000_000   // 1s
     static private let maxEventCount: Int = 10
 
     private let sanitizedInstance: String
 
-    init(instanceName: String, sessionStartAt: TimeInterval, logger: CoreLogger, persistIntervalNanoSeconds: UInt64 = defaultPersistInterval) {
+    init(instanceName: String, sessionStartAt: TimeInterval, logger: CoreLogger, persistIntervalNanoSeconds: UInt64 = NSEC_PER_SEC) {
         self.instanceName = instanceName
         self.logger = logger
         self.sessionStartAt = sessionStartAt
