@@ -60,7 +60,7 @@ public actor DiagnosticsClient: CoreDiagnostics {
         self.storage = DiagnosticsStorage(instanceName: instanceName,
                                           sessionStartAt: startTimestamp,
                                           logger: logger)
-        let isRunning = enabled && Sample.isInSample(seed: String(startTimestamp), sampleRate: Float(sampleRate))
+        let isRunning = enabled && Sample.isInSample(seed: String(startTimestamp), sampleRate: sampleRate)
         self.isRunning = isRunning
         self.remoteConfigClient = remoteConfigClient
 
@@ -277,7 +277,7 @@ public actor DiagnosticsClient: CoreDiagnostics {
 
     private func updateIsRunning() {
         let oldValue = isRunning
-        isRunning = enabled && Sample.isInSample(seed: String(self.startTimestamp), sampleRate: Float(sampleRate))
+        isRunning = enabled && Sample.isInSample(seed: String(self.startTimestamp), sampleRate: sampleRate)
 
         // Notify observers if value changed
         if oldValue != isRunning {

@@ -8,22 +8,20 @@
 import Foundation
 
 class Sample {
-    static func isInSample(seed: String, sampleRate: Float) -> Bool {
-        // generate java string style hash code
-        let hash = Hash.javaStringHash(seed)
-
-        // Convert to UInt64 to avoid abs(Int64.min) undefined behavior
-        let magnitude = UInt64(bitPattern: hash)
-        let scaledHash = (magnitude &* 31) % 100_000
-        return Float(scaledHash) / 100_000 < sampleRate
+    static func isInSample(seed: String, sampleRate: Double) -> Bool {
+        let hash = Hash.javaStyleHash64(seed)
+        let scaledHash = (hash &* 31) % 100_000
+        return scaledHash < UInt64(sampleRate * 100_000)
     }
 }
 
 class Hash {
-    static func javaStringHash(_ s: String) -> Int64 {
-        return s.utf16.reduce(0) { hash, code in
+    static func javaStyleHash64(_ s: String) -> UInt64 {
+        let hash = s.utf16.reduce(0) { hash, code in
             (hash << 5) &- hash &+ Int64(code)
         }
+        // Convert to UInt64 to avoid abs(Int64.min) undefined behavior
+        return UInt64(bitPattern: hash)
     }
 
     static func fnv1a64(_ s: String) -> UInt64 {
