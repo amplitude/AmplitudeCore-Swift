@@ -186,7 +186,9 @@ public class CoreDevice: Sendable {
 
             let infoData = Data(bytes: buffer, count: length)
             let indexAfterMsghdr = MemoryLayout<if_msghdr>.stride + 1
-            let rangeOfToken = infoData[indexAfterMsghdr...].range(of: bsdData)!
+            guard let rangeOfToken = infoData[indexAfterMsghdr...].range(of: bsdData) else {
+                return nil
+            }
             let lower = rangeOfToken.upperBound
             let upper = lower + MAC_ADDRESS_LENGTH
             let macAddressData = infoData[lower..<upper]
