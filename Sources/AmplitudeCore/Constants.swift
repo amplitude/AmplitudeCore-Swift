@@ -11,7 +11,7 @@ struct Constants {
 
     struct RemoteConfig {
         struct Key {
-            static let diagnostics = "diagnostics.iosSDK.sampleRate"
+            static let diagnostics = "diagnostics.iosSDK"
         }
     }
 }

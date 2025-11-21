@@ -60,6 +60,7 @@ public actor DiagnosticsClient: CoreDiagnostics {
         self.storage = DiagnosticsStorage(instanceName: instanceName,
                                           sessionStartAt: startTimestamp,
                                           logger: logger)
+        let sampleRate = max(0.0, min(1.0, sampleRate))
         let isRunning = enabled && Sample.isInSample(seed: String(startTimestamp), sampleRate: sampleRate)
         self.isRunning = isRunning
         self.remoteConfigClient = remoteConfigClient
@@ -71,7 +72,7 @@ public actor DiagnosticsClient: CoreDiagnostics {
 
             Task { [weak self] in
                 let enabled = config["enabled"] as? Bool
-                let sampleRate = config["sample_rate"] as? Double
+                let sampleRate = config["sampleRate"] as? Double
                 await self?.updateConfig(enabled: enabled, sampleRate: sampleRate)
             }
         }

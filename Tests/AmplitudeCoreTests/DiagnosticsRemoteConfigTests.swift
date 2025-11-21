@@ -32,10 +32,8 @@ final class DiagnosticsRemoteConfigTests: XCTestCase {
         let remoteConfig: RemoteConfigClient.RemoteConfig = [
             "diagnostics": [
                 "iosSDK": [
-                    "sampleRate": [
-                        "enabled": true,
-                        "sample_rate": 1.0
-                    ]
+                    "enabled": true,
+                    "sampleRate": 1.0
                 ]
             ]
         ]
@@ -66,16 +64,14 @@ final class DiagnosticsRemoteConfigTests: XCTestCase {
 
         // Should now be enabled from remote config
         let isRunningAfter = await diagnosticsClient.isRunning
-        XCTAssertTrue(isRunningAfter, "Should be enabled after remote config (enabled=true, sample_rate=1.0)")
+        XCTAssertTrue(isRunningAfter, "Should be enabled after remote config (enabled=true, sampleRate=1.0)")
     }
 
     func testDiagnosticsTurnsOffFromRemoteConfig() async throws {
         let remoteConfig: RemoteConfigClient.RemoteConfig = [
             "diagnostics": [
                 "iosSDK": [
-                    "sampleRate": [
-                        "enabled": false
-                    ]
+                    "enabled": false
                 ]
             ]
         ]
@@ -115,10 +111,8 @@ final class DiagnosticsRemoteConfigTests: XCTestCase {
         let remoteConfig: RemoteConfigClient.RemoteConfig = [
             "diagnostics": [
                 "iosSDK": [
-                    "sampleRate": [
-                        "enabled": true,
-                        "sample_rate": 1.0
-                    ]
+                    "enabled": true,
+                    "sampleRate": 1.0
                 ]
             ]
         ]
@@ -149,13 +143,11 @@ final class DiagnosticsRemoteConfigTests: XCTestCase {
     }
 
     func testPartialRemoteConfigEnabled() async throws {
-        // Remote config only specifies enabled, not sample_rate
+        // Remote config only specifies enabled, not sampleRate
         let remoteConfig: RemoteConfigClient.RemoteConfig = [
             "diagnostics": [
                 "iosSDK": [
-                    "sampleRate": [
-                        "enabled": true
-                    ]
+                    "enabled": true
                 ]
             ]
         ]
@@ -179,19 +171,17 @@ final class DiagnosticsRemoteConfigTests: XCTestCase {
 
         try await Task.sleep(nanoseconds: NSEC_PER_SEC / 2)
 
-        // Should be enabled now (enabled=true from remote, sample_rate stays 1.0 from local)
+        // Should be enabled now (enabled=true from remote, sampleRate stays 1.0 from local)
         let isRunningAfter = await diagnosticsClient.isRunning
         XCTAssertTrue(isRunningAfter, "Should be enabled with local sample rate")
     }
 
     func testPartialRemoteConfigSampleRate() async throws {
-        // Remote config only specifies sample_rate, not enabled
+        // Remote config only specifies sampleRate, not enabled
         let remoteConfig: RemoteConfigClient.RemoteConfig = [
             "diagnostics": [
                 "iosSDK": [
-                    "sampleRate": [
-                        "sample_rate": 1.0
-                    ]
+                    "sampleRate": 1.0
                 ]
             ]
         ]
@@ -215,7 +205,7 @@ final class DiagnosticsRemoteConfigTests: XCTestCase {
 
         try await Task.sleep(nanoseconds: NSEC_PER_SEC / 2)
 
-        // Should remain running (enabled=true local, sample_rate=1.0 from remote)
+        // Should remain running (enabled=true local, sampleRate=1.0 from remote)
         let isRunningAfter = await diagnosticsClient.isRunning
         XCTAssertTrue(isRunningAfter, "Should be running with remote sample rate 1.0")
     }
@@ -225,10 +215,8 @@ final class DiagnosticsRemoteConfigTests: XCTestCase {
         let remoteConfig: RemoteConfigClient.RemoteConfig = [
             "diagnostics": [
                 "iosSDK": [
-                    "sampleRate": [
-                        "enabled": "true", // String instead of Bool
-                        "sample_rate": "0.5" // String instead of Double
-                    ]
+                    "enabled": "true", // String instead of Bool
+                    "sampleRate": "0.5" // String instead of Double
                 ]
             ]
         ]
@@ -273,7 +261,7 @@ final class DiagnosticsRemoteConfigTests: XCTestCase {
                 "iosSDK": [
                     "sampleRate": [
                         "enabled": true,
-                        "sample_rate": 1.0
+                        "sampleRate": 1.0
                     ]
                 ]
             ]
