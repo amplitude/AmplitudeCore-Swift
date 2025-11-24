@@ -15,10 +15,7 @@ public protocol CoreDiagnostics: Actor {
     func increment(name: String, size: Int) async
     func recordHistogram(name: String, value: Double) async
     func recordEvent(name: String, properties: [String: any Sendable]?) async
-
-    var isRunning: Bool { get }
-    func observeIsRunning() -> (stream: AsyncStream<Bool>, id: UUID)
-    func stopObservingIsRunning(_ id: UUID)
+    func flush() async
 }
 
 @available(iOS 13.0, macOS 10.15, watchOS 6.0, tvOS 13.0, *)

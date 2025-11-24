@@ -52,7 +52,7 @@ final class DiagnosticsRemoteConfigTests: XCTestCase {
         )
 
         // Initially disabled
-        let wasRunning = await diagnosticsClient.isRunning
+        let wasRunning = await diagnosticsClient.shouldTrack
         XCTAssertFalse(wasRunning, "Should be disabled initially (enabled=false)")
 
         // Wait for remote config to be fetched and applied
@@ -63,7 +63,7 @@ final class DiagnosticsRemoteConfigTests: XCTestCase {
         try await Task.sleep(nanoseconds: NSEC_PER_SEC / 2) // 0.5 seconds
 
         // Should now be enabled from remote config
-        let isRunningAfter = await diagnosticsClient.isRunning
+        let isRunningAfter = await diagnosticsClient.shouldTrack
         XCTAssertTrue(isRunningAfter, "Should be enabled after remote config (enabled=true, sampleRate=1.0)")
     }
 
@@ -90,7 +90,7 @@ final class DiagnosticsRemoteConfigTests: XCTestCase {
         )
 
         // Initially enabled
-        let wasRunning = await diagnosticsClient.isRunning
+        let wasRunning = await diagnosticsClient.shouldTrack
         XCTAssertTrue(wasRunning, "Should be enabled initially")
 
         // Wait for remote config to be fetched and applied
@@ -101,7 +101,7 @@ final class DiagnosticsRemoteConfigTests: XCTestCase {
         try await Task.sleep(nanoseconds: NSEC_PER_SEC / 2) // 0.5 seconds
 
         // Should now be disabled from remote config
-        let isRunningAfter = await diagnosticsClient.isRunning
+        let isRunningAfter = await diagnosticsClient.shouldTrack
         XCTAssertFalse(isRunningAfter, "Should be disabled after remote config (enabled=false)")
     }
 
@@ -138,7 +138,7 @@ final class DiagnosticsRemoteConfigTests: XCTestCase {
         try await Task.sleep(nanoseconds: NSEC_PER_SEC / 2) // 0.5 seconds
 
         // Should remain running (was already running, remote confirms it)
-        let isRunningAfter = await diagnosticsClient.isRunning
+        let isRunningAfter = await diagnosticsClient.shouldTrack
         XCTAssertTrue(isRunningAfter, "Should be running with sample rate 1.0")
     }
 
@@ -172,7 +172,7 @@ final class DiagnosticsRemoteConfigTests: XCTestCase {
         try await Task.sleep(nanoseconds: NSEC_PER_SEC / 2)
 
         // Should be enabled now (enabled=true from remote, sampleRate stays 1.0 from local)
-        let isRunningAfter = await diagnosticsClient.isRunning
+        let isRunningAfter = await diagnosticsClient.shouldTrack
         XCTAssertTrue(isRunningAfter, "Should be enabled with local sample rate")
     }
 
@@ -206,7 +206,7 @@ final class DiagnosticsRemoteConfigTests: XCTestCase {
         try await Task.sleep(nanoseconds: NSEC_PER_SEC / 2)
 
         // Should remain running (enabled=true local, sampleRate=1.0 from remote)
-        let isRunningAfter = await diagnosticsClient.isRunning
+        let isRunningAfter = await diagnosticsClient.shouldTrack
         XCTAssertTrue(isRunningAfter, "Should be running with remote sample rate 1.0")
     }
 
@@ -240,7 +240,7 @@ final class DiagnosticsRemoteConfigTests: XCTestCase {
         try await Task.sleep(nanoseconds: NSEC_PER_SEC / 10)
 
         // Should ignore invalid types and keep local config
-        let isRunningAfter = await diagnosticsClient.isRunning
+        let isRunningAfter = await diagnosticsClient.shouldTrack
         XCTAssertTrue(isRunningAfter, "Should maintain local settings with invalid remote config")
     }
 

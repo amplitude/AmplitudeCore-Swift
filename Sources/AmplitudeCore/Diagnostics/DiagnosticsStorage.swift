@@ -13,55 +13,71 @@ actor DiagnosticsStorage {
     let instanceName: String
     let logger: CoreLogger
     let sessionStartAt: TimeInterval
-    private let persistIntervalNanoSeconds: UInt64
+    private let persistIntervalNanoSec: UInt64
 
-    // In-memory state
     var tags: [String: String] = [:]
     var counters: [String: Int] = [:]
     var histograms: [String: HistogramStats] = [:]
     var events: [DiagnosticsEvent] = []
 
-    var isLoaded: Bool = false
+    var hasUnsavedTags = false
+    var hasUnsavedCounters = false
+    var hasUnsavedHistograms = false
+    var unsavedEvents: [DiagnosticsEvent] = []
 
-    var tagsChanged = false
-    var countersChanged = false
-    var histogramsChanged = false
-    var addedEvents: [DiagnosticsEvent] = []
+    var shouldStore: Bool = false
 
     private var persistenceTask: Task<Void, Never>?
 
     private static let storagePrefix: String = "com.amplitude.diagnostics"
     private static let maxEventsLogBytes: Int = 256 * 1024
     private static let newlineData = Data([0x0A])
-    static private let maxEventCount: Int = 10
+    private static let maxEventCount: Int = 10
 
     private let sanitizedInstance: String
 
-    init(instanceName: String, sessionStartAt: TimeInterval, logger: CoreLogger, persistIntervalNanoSeconds: UInt64 = NSEC_PER_SEC) {
+    init(instanceName: String, sessionStartAt: TimeInterval, logger: CoreLogger, shouldStore: Bool, persistIntervalNanoSec: UInt64 = NSEC_PER_SEC) {
         self.instanceName = instanceName
         self.logger = logger
         self.sessionStartAt = sessionStartAt
         self.sanitizedInstance = Self.sanitize(instanceName)
-        self.persistIntervalNanoSeconds = persistIntervalNanoSeconds
+        self.persistIntervalNanoSec = persistIntervalNanoSec
+        self.shouldStore = shouldStore
     }
 
-    // MARK: - Public API for data manipulation
+    func setShouldStore(_ shouldStore: Bool) {
+        self.shouldStore = shouldStore
+        if shouldStore {
+            startPersistenceTimerIfNeeded()
+        } else {
+            stopPersistenceTimer()
+            try? removeAllStoredFiles()
+        }
+    }
+
+    var hasUnsavedData: Bool {
+        hasUnsavedTags || hasUnsavedCounters || hasUnsavedHistograms || !unsavedEvents.isEmpty
+    }
+
+    var didChanged: Bool {
+        !(counters.isEmpty && histograms.isEmpty && tags.isEmpty && unsavedEvents.isEmpty)
+    }
 
     func setTag(name: String, value: String) {
         tags[name] = value
-        tagsChanged = true
+        hasUnsavedTags = true
         startPersistenceTimerIfNeeded()
     }
 
     func setTags(_ newTags: [String: String]) {
         tags.merge(newTags, uniquingKeysWith: { _, new in new })
-        tagsChanged = true
+        hasUnsavedTags = true
         startPersistenceTimerIfNeeded()
     }
 
     func increment(name: String, size: Int = 1) {
         counters[name] = (counters[name] ?? 0) + size
-        countersChanged = true
+        hasUnsavedCounters = true
         startPersistenceTimerIfNeeded()
     }
 
@@ -72,12 +88,12 @@ actor DiagnosticsStorage {
         stats.min = min(stats.min, value)
         stats.max = max(stats.max, value)
         histograms[name] = stats
-        histogramsChanged = true
+        hasUnsavedHistograms = true
         startPersistenceTimerIfNeeded()
     }
 
     func recordEvent(name: String, properties: [String: any Sendable]? = nil) {
-        guard addedEvents.count < Self.maxEventCount else {
+        guard unsavedEvents.count < Self.maxEventCount else {
             logger.debug(message: "DiagnosticsStorage: Event limit reached")
             return
         }
@@ -85,56 +101,26 @@ actor DiagnosticsStorage {
                                      time: Date().timeIntervalSince1970,
                                      eventProperties: properties)
         events.append(event)
-        addedEvents.append(event)
+        unsavedEvents.append(event)
         startPersistenceTimerIfNeeded()
     }
 
     /// Dumps all diagnostic data and clears counters, histograms, and events (keeping tags)
     /// - Returns: Tuple containing all current diagnostic data
-    func dumpAndClear() -> DiagnosticsSnapshot {
-        // Create snapshot of current data
+    func dumpAndClearCurrentSession() -> DiagnosticsSnapshot {
         let snapshot = DiagnosticsSnapshot(tags: tags, counters: counters, histograms: histograms, events: events)
 
         // Clear in-memory data (keep tags)
         counters.removeAll()
         histograms.removeAll()
         events.removeAll()
-        addedEvents.removeAll()
-
-        // Reset change flags
-        countersChanged = false
-        histogramsChanged = false
+        unsavedEvents.removeAll()
+        hasUnsavedCounters = false
+        hasUnsavedHistograms = false
 
         // Remove files (keep tags file)
         do {
-            let directory = try storageDirectory()
-            let fileManager = FileManager.default
-
-            let countersURL = countersFileURL(in: directory)
-            if fileManager.fileExists(atPath: countersURL.path) {
-                try fileManager.removeItem(at: countersURL)
-            }
-
-            let histogramsURL = histogramsFileURL(in: directory)
-            if fileManager.fileExists(atPath: histogramsURL.path) {
-                try fileManager.removeItem(at: histogramsURL)
-            }
-
-            let eventsURL = eventsFileURL(in: directory)
-            if fileManager.fileExists(atPath: eventsURL.path) {
-                try fileManager.removeItem(at: eventsURL)
-            }
-
-            // Also remove rotated event log files
-            let contents = (try? fileManager.contentsOfDirectory(at: directory,
-                                                                 includingPropertiesForKeys: nil,
-                                                                 options: [])) ?? []
-            for url in contents {
-                let name = url.lastPathComponent
-                if name.hasPrefix("events-") && name.hasSuffix(".log") {
-                    try? fileManager.removeItem(at: url)
-                }
-            }
+            try removeFiles(includeTags: false)
         } catch {
             logger.error(message: "DiagnosticsStorage: Failed to remove files during dump: \(error)")
         }
@@ -144,7 +130,7 @@ actor DiagnosticsStorage {
 
     /// Loads all historic diagnostic data from filesystem and clears those folders
     /// - Returns: Array of diagnostic snapshots from previous sessions
-    func loadAndClearHistoricData() -> [DiagnosticsSnapshot] {
+    func loadAndClearPreviousSessions() -> [DiagnosticsSnapshot] {
         var snapshots: [DiagnosticsSnapshot] = []
 
         do {
@@ -187,7 +173,6 @@ actor DiagnosticsStorage {
                     snapshots.append(snapshot)
                 }
 
-                // Remove the directory after loading
                 try? fileManager.removeItem(at: sessionDir)
             }
 
@@ -241,7 +226,6 @@ actor DiagnosticsStorage {
             }
         }
 
-        // Only return snapshot if we loaded at least something
         if !tags.isEmpty || !counters.isEmpty || !histograms.isEmpty || !events.isEmpty {
             return DiagnosticsSnapshot(tags: tags, counters: counters, histograms: histograms, events: events)
         }
@@ -252,62 +236,90 @@ actor DiagnosticsStorage {
     // MARK: - Persistence
 
     func persistIfNeeded() {
-        if tagsChanged {
+        guard shouldStore else { return }
+
+        if hasUnsavedTags {
             do {
                 let directory = try storageDirectory()
                 try persist(tags: tags, in: directory)
-                tagsChanged = false
+                hasUnsavedTags = false
             } catch {
                 logger.error(message: "DiagnosticsStorage: Failed to write tags: \(error)")
             }
         }
 
-        if countersChanged {
+        if hasUnsavedCounters {
             do {
                 let directory = try storageDirectory()
                 try persist(counters: counters, in: directory)
-                countersChanged = false
+                hasUnsavedCounters = false
             } catch {
                 logger.error(message: "DiagnosticsStorage: Failed to write counters: \(error)")
             }
         }
 
-        if histogramsChanged {
+        if hasUnsavedHistograms {
             do {
                 let directory = try storageDirectory()
                 try persist(histograms: histograms, in: directory)
-                histogramsChanged = false
+                hasUnsavedHistograms = false
             } catch {
                 logger.error(message: "DiagnosticsStorage: Failed to write histograms: \(error)")
             }
         }
 
-        if !addedEvents.isEmpty {
+        if !unsavedEvents.isEmpty {
             do {
                 let directory = try storageDirectory()
                 let logUrl = eventsFileURL(in: directory)
                 try prepareEventsLog(at: logUrl, in: directory)
-                try append(events: addedEvents, to: logUrl)
-                addedEvents.removeAll()
+                try append(events: unsavedEvents, to: logUrl)
+                unsavedEvents.removeAll()
             } catch {
                 logger.error(message: "DiagnosticsStorage: Failed to add events: \(error)")
             }
         }
     }
 
-    func removeAll() throws {
+    func removeAllStoredFiles() throws {
+        try removeFiles(includeTags: true)
+    }
+
+    private func removeFiles(includeTags: Bool) throws {
         let directory = try storageDirectory()
         let fileManager = FileManager.default
+
+        // Remove specific files
+        if includeTags {
+            let tagsURL = tagsFileURL(in: directory)
+            if fileManager.fileExists(atPath: tagsURL.path) {
+                try fileManager.removeItem(at: tagsURL)
+            }
+        }
+
+        let countersURL = countersFileURL(in: directory)
+        if fileManager.fileExists(atPath: countersURL.path) {
+            try fileManager.removeItem(at: countersURL)
+        }
+
+        let histogramsURL = histogramsFileURL(in: directory)
+        if fileManager.fileExists(atPath: histogramsURL.path) {
+            try fileManager.removeItem(at: histogramsURL)
+        }
+
+        let eventsURL = eventsFileURL(in: directory)
+        if fileManager.fileExists(atPath: eventsURL.path) {
+            try fileManager.removeItem(at: eventsURL)
+        }
+
+        // Remove rotated event log files
         let contents = (try? fileManager.contentsOfDirectory(at: directory,
                                                              includingPropertiesForKeys: nil,
                                                              options: [])) ?? []
         for url in contents {
             let name = url.lastPathComponent
-            if name.hasPrefix("tags") ||
-               name.hasPrefix("counters") ||
-               name.hasPrefix("histograms") ||
-               name.hasPrefix("events") {
-                try fileManager.removeItem(at: url)
+            if name.hasPrefix("events-") && name.hasSuffix(".log") {
+                try? fileManager.removeItem(at: url)
             }
         }
     }
@@ -439,9 +451,9 @@ actor DiagnosticsStorage {
     // MARK: - Persistence Timer
 
     private func startPersistenceTimerIfNeeded() {
-        guard persistenceTask == nil else { return }
-        
-        let interval = persistIntervalNanoSeconds
+        guard shouldStore, hasUnsavedData, persistenceTask == nil else { return }
+
+        let interval = persistIntervalNanoSec
         persistenceTask = Task { [weak self] in
             try? await Task.sleep(nanoseconds: interval)
             
@@ -450,7 +462,7 @@ actor DiagnosticsStorage {
         }
     }
 
-    public func stopPersistenceTimer() {
+    func stopPersistenceTimer() {
         persistenceTask?.cancel()
         persistenceTask = nil
     }
@@ -458,7 +470,11 @@ actor DiagnosticsStorage {
     private func markPersistenceTimerFinished() {
         persistenceTask = nil
     }
-    
+
+    func waitForPendingPersistenceTask() async throws {
+        await persistenceTask?.value
+    }
+
     deinit {
         // Cancel any pending persistence task
         persistenceTask?.cancel()

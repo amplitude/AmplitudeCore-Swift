@@ -12,7 +12,7 @@ import XCTest
 final class DiagnosticsClientTests: XCTestCase {
 
     static let testApiKey = "test-diagnostics-api-key"
-    static let testInstanceName = "test-diagnostics-instance-name"
+    var testInstanceName: String = ""
 
     static let testSessionConfiguration: URLSessionConfiguration = {
         let configuration = URLSessionConfiguration.ephemeral
@@ -25,6 +25,7 @@ final class DiagnosticsClientTests: XCTestCase {
 
     override func setUp() async throws {
         TestDiagnosticsHandler.reset()
+        testInstanceName = "test-diagnostics-instance-\(UUID().uuidString)"
     }
 
     /// Helper to skip tests that require URLProtocol on watchOS (where it doesn't work)
@@ -48,7 +49,7 @@ final class DiagnosticsClientTests: XCTestCase {
             urlSessionConfiguration: Self.testSessionConfiguration
         )
 
-        let isRunning = await client.isRunning
+        let isRunning = await client.shouldTrack
         XCTAssertTrue(isRunning, "Client should be running when enabled=true and sampleRate=1.0")
     }
 
@@ -62,21 +63,21 @@ final class DiagnosticsClientTests: XCTestCase {
             urlSessionConfiguration: Self.testSessionConfiguration
         )
 
-        let isRunning = await client.isRunning
+        let isRunning = await client.shouldTrack
         XCTAssertFalse(isRunning, "Client should not be running when enabled=true and sampleRate=0")
     }
 
     func testInitializationWithDisabled() async throws {
         let client = DiagnosticsClient(
             apiKey: Self.testApiKey,
-            instanceName: Self.testInstanceName,
+            instanceName: testInstanceName,
             enabled: false,
             sampleRate: 1.0,
             remoteConfigClient: nil,
             urlSessionConfiguration: Self.testSessionConfiguration
         )
 
-        let isRunning = await client.isRunning
+        let isRunning = await client.shouldTrack
         XCTAssertFalse(isRunning, "Client should not be running when enabled=false")
     }
 
@@ -130,7 +131,7 @@ final class DiagnosticsClientTests: XCTestCase {
     func testSetTagWhenDisabled() async throws {
         let client = DiagnosticsClient(
             apiKey: Self.testApiKey,
-            instanceName: Self.testInstanceName,
+            instanceName: testInstanceName,
             enabled: false,
             sampleRate: 1.0,
             remoteConfigClient: nil,
@@ -140,7 +141,7 @@ final class DiagnosticsClientTests: XCTestCase {
         // Should return immediately without error
         await client.setTag(name: "test_tag", value: "value")
 
-        let isRunning = await client.isRunning
+        let isRunning = await client.shouldTrack
         XCTAssertFalse(isRunning)
     }
 
@@ -397,7 +398,7 @@ final class DiagnosticsClientTests: XCTestCase {
         await client.flush()
 
         // Should not crash or throw
-        let isRunning = await client.isRunning
+        let isRunning = await client.shouldTrack
         XCTAssertTrue(isRunning)
     }
 
@@ -446,7 +447,7 @@ final class DiagnosticsClientTests: XCTestCase {
         let client = DiagnosticsClient(
             apiKey: Self.testApiKey,
             serverZone: .US,
-            instanceName: Self.testInstanceName,
+            instanceName: testInstanceName,
             enabled: true,
             sampleRate: 1.0,
             remoteConfigClient: nil,
@@ -485,7 +486,7 @@ final class DiagnosticsClientTests: XCTestCase {
         let client = DiagnosticsClient(
             apiKey: Self.testApiKey,
             serverZone: .EU,
-            instanceName: Self.testInstanceName,
+            instanceName: testInstanceName,
             enabled: true,
             sampleRate: 1.0,
             remoteConfigClient: nil,
@@ -520,19 +521,19 @@ final class DiagnosticsClientTests: XCTestCase {
     func testDisableStopsOperation() async throws {
         let client = DiagnosticsClient(
             apiKey: Self.testApiKey,
-            instanceName: Self.testInstanceName,
+            instanceName: testInstanceName,
             enabled: true,
             sampleRate: 1.0,
             remoteConfigClient: nil,
             urlSessionConfiguration: Self.testSessionConfiguration
         )
 
-        let wasRunning = await client.isRunning
+        let wasRunning = await client.shouldTrack
         XCTAssertTrue(wasRunning)
 
         await client.updateConfig(enabled: false)
 
-        let isRunningAfterDisable = await client.isRunning
+        let isRunningAfterDisable = await client.shouldTrack
         XCTAssertFalse(isRunningAfterDisable)
     }
 
@@ -541,19 +542,19 @@ final class DiagnosticsClientTests: XCTestCase {
 
         let client = DiagnosticsClient(
             apiKey: Self.testApiKey,
-            instanceName: Self.testInstanceName,
+            instanceName: testInstanceName,
             enabled: false,
             sampleRate: 1.0,
             remoteConfigClient: nil,
             urlSessionConfiguration: Self.testSessionConfiguration
         )
 
-        let wasRunning = await client.isRunning
+        let wasRunning = await client.shouldTrack
         XCTAssertFalse(wasRunning)
 
         await client.updateConfig(enabled: true)
 
-        let isRunningAfterEnable = await client.isRunning
+        let isRunningAfterEnable = await client.shouldTrack
         XCTAssertTrue(isRunningAfterEnable)
     }
 
@@ -562,14 +563,14 @@ final class DiagnosticsClientTests: XCTestCase {
     func testChangeSampleRateToZeroStopsOperation() async throws {
         let client = DiagnosticsClient(
             apiKey: Self.testApiKey,
-            instanceName: Self.testInstanceName,
+            instanceName: testInstanceName,
             enabled: true,
             sampleRate: 1.0,
             remoteConfigClient: nil,
             urlSessionConfiguration: Self.testSessionConfiguration
         )
 
-        let wasRunning = await client.isRunning
+        let wasRunning = await client.shouldTrack
         XCTAssertTrue(wasRunning)
 
         await client.updateConfig(sampleRate: 0.0)
@@ -577,7 +578,7 @@ final class DiagnosticsClientTests: XCTestCase {
         // Note: Due to deterministic sampling based on session seed,
         // changing sample rate may or may not immediately affect isRunning
         // This test mainly verifies the method doesn't crash
-        _ = await client.isRunning
+        _ = await client.shouldTrack
     }
 
     func testChangeSampleRateToOneStartsOperation() async throws {
@@ -585,7 +586,7 @@ final class DiagnosticsClientTests: XCTestCase {
 
         let client = DiagnosticsClient(
             apiKey: Self.testApiKey,
-            instanceName: Self.testInstanceName,
+            instanceName: testInstanceName,
             enabled: true,
             sampleRate: 0.001, // Very low
             remoteConfigClient: nil,
@@ -593,328 +594,20 @@ final class DiagnosticsClientTests: XCTestCase {
         )
 
         // Note: With low sample rate, may or may not be running initially
-        _ = await client.isRunning
+        _ = await client.shouldTrack
 
         await client.updateConfig(sampleRate: 1.0)
 
         // Should definitely be running with sample rate 1.0
-        let isRunningAfterChange = await client.isRunning
+        let isRunningAfterChange = await client.shouldTrack
         XCTAssertTrue(isRunningAfterChange)
-    }
-
-    // MARK: - Observe isRunning Tests
-
-    func testObserveIsRunningReceivesInitialValue() async throws {
-        let client = DiagnosticsClient(
-            apiKey: Self.testApiKey,
-            instanceName: Self.testInstanceName,
-            enabled: true,
-            sampleRate: 1.0,
-            remoteConfigClient: nil,
-            urlSessionConfiguration: Self.testSessionConfiguration
-        )
-
-        let (stream, observerId) = await client.observeIsRunning()
-
-        // Should receive initial value immediately
-        let initialValue = await stream.first { _ in true }
-        XCTAssertNotNil(initialValue)
-        XCTAssertTrue(initialValue ?? false)
-
-        await client.stopObservingIsRunning(observerId)
-    }
-
-    func testObserveIsRunningNotifiesOnEnabledChange() async throws {
-        let client = DiagnosticsClient(
-            apiKey: Self.testApiKey,
-            instanceName: Self.testInstanceName,
-            enabled: true,
-            sampleRate: 1.0,
-            remoteConfigClient: nil,
-            urlSessionConfiguration: Self.testSessionConfiguration
-        )
-
-        let (stream, observerId) = await client.observeIsRunning()
-
-        var receivedValues: [Bool] = []
-        let valueExpectation = XCTestExpectation(description: "Received value change")
-        valueExpectation.expectedFulfillmentCount = 2 // Initial + change
-
-        let observerTask = Task {
-            for await isRunning in stream {
-                receivedValues.append(isRunning)
-                if receivedValues.count >= 2 {
-                    break
-                }
-            }
-        }
-
-        // Wait a bit for initial value
-        try await Task.sleep(nanoseconds: NSEC_PER_SEC / 10) // 0.1 seconds
-
-        // Change enabled state
-        await client.updateConfig(enabled: false)
-
-        // Wait for task to complete (ensures all array modifications are done)
-        await observerTask.value
-
-        XCTAssertEqual(receivedValues.count, 2)
-        XCTAssertTrue(receivedValues[0], "Initial value should be true")
-        XCTAssertFalse(receivedValues[1], "After disable should be false")
-
-        await client.stopObservingIsRunning(observerId)
-    }
-
-    func testObserveIsRunningNotifiesOnSampleRateChange() async throws {
-        let client = DiagnosticsClient(
-            apiKey: Self.testApiKey,
-            instanceName: Self.testInstanceName,
-            enabled: true,
-            sampleRate: 1.0,
-            remoteConfigClient: nil,
-            urlSessionConfiguration: Self.testSessionConfiguration
-        )
-
-        let (stream, observerId) = await client.observeIsRunning()
-
-        var receivedValues: [Bool] = []
-        let valueExpectation = XCTestExpectation(description: "Received value change")
-        valueExpectation.expectedFulfillmentCount = 2 // Initial + change
-
-        let observerTask = Task {
-            for await isRunning in stream {
-                receivedValues.append(isRunning)
-                if receivedValues.count >= 2 {
-                    break
-                }
-            }
-        }
-
-        // Wait a bit for initial value
-        try await Task.sleep(nanoseconds: NSEC_PER_SEC / 10) // 0.1 seconds
-
-        // Change sample rate to 0
-        await client.updateConfig(sampleRate: 0.0)
-
-        // Wait for task to complete (ensures all array modifications are done)
-        await observerTask.value
-
-        XCTAssertEqual(receivedValues.count, 2)
-        XCTAssertTrue(receivedValues[0], "Initial value should be true")
-        XCTAssertFalse(receivedValues[1], "After sample rate 0 should be false")
-
-        await client.stopObservingIsRunning(observerId)
-    }
-
-    func testObserveIsRunningMultipleObservers() async throws {
-        let client = DiagnosticsClient(
-            apiKey: Self.testApiKey,
-            instanceName: Self.testInstanceName,
-            enabled: true,
-            sampleRate: 1.0,
-            remoteConfigClient: nil,
-            urlSessionConfiguration: Self.testSessionConfiguration
-        )
-
-        let (stream1, observerId1) = await client.observeIsRunning()
-        let (stream2, observerId2) = await client.observeIsRunning()
-
-        var observer1Values: [Bool] = []
-        var observer2Values: [Bool] = []
-        let expectation1 = XCTestExpectation(description: "Observer 1 received values")
-        let expectation2 = XCTestExpectation(description: "Observer 2 received values")
-        expectation1.expectedFulfillmentCount = 2
-        expectation2.expectedFulfillmentCount = 2
-
-        let task1 = Task {
-            for await isRunning in stream1 {
-                observer1Values.append(isRunning)
-                expectation1.fulfill()
-                if observer1Values.count >= 2 {
-                    break
-                }
-            }
-        }
-
-        let task2 = Task {
-            for await isRunning in stream2 {
-                observer2Values.append(isRunning)
-                expectation2.fulfill()
-                if observer2Values.count >= 2 {
-                    break
-                }
-            }
-        }
-
-        // Wait for initial values
-        try await Task.sleep(nanoseconds: NSEC_PER_SEC / 10) // 0.1 seconds
-
-        // Change state
-        await client.updateConfig(enabled: false)
-
-        await fulfillment(of: [expectation1, expectation2], timeout: 5.0)
-
-        // Both observers should receive the same values
-        XCTAssertEqual(observer1Values.count, 2)
-        XCTAssertEqual(observer2Values.count, 2)
-        XCTAssertTrue(observer1Values[0])
-        XCTAssertFalse(observer1Values[1])
-        XCTAssertTrue(observer2Values[0])
-        XCTAssertFalse(observer2Values[1])
-
-        await client.stopObservingIsRunning(observerId1)
-        await client.stopObservingIsRunning(observerId2)
-        task1.cancel()
-        task2.cancel()
-    }
-
-    func testStopObservingIsRunning() async throws {
-        let client = DiagnosticsClient(
-            apiKey: Self.testApiKey,
-            instanceName: Self.testInstanceName,
-            enabled: true,
-            sampleRate: 1.0,
-            remoteConfigClient: nil,
-            urlSessionConfiguration: Self.testSessionConfiguration
-        )
-
-        let (stream, observerId) = await client.observeIsRunning()
-
-        var receivedValues: [Bool] = []
-        let task = Task {
-            for await isRunning in stream {
-                receivedValues.append(isRunning)
-            }
-        }
-
-        // Wait for initial value
-        try await Task.sleep(nanoseconds: NSEC_PER_SEC / 10) // 0.1 seconds
-
-        // Stop observing
-        await client.stopObservingIsRunning(observerId)
-
-        // Wait a bit for stream to finish
-        try await Task.sleep(nanoseconds: NSEC_PER_SEC / 10) // 0.1 seconds
-
-        let countAfterStop = receivedValues.count
-
-        // Make a change (should not notify stopped observer)
-        await client.updateConfig(enabled: false)
-
-        // Wait a bit
-        try await Task.sleep(nanoseconds: NSEC_PER_SEC / 10) // 0.1 seconds
-
-        // Should not have received any more values
-        XCTAssertEqual(receivedValues.count, countAfterStop)
-        XCTAssertEqual(receivedValues.count, 1, "Should only have initial value")
-
-        task.cancel()
-    }
-
-    func testObserveIsRunningDoesNotNotifyWhenValueUnchanged() async throws {
-        let client = DiagnosticsClient(
-            apiKey: Self.testApiKey,
-            instanceName: Self.testInstanceName,
-            enabled: true,
-            sampleRate: 1.0,
-            remoteConfigClient: nil,
-            urlSessionConfiguration: Self.testSessionConfiguration
-        )
-
-        let (stream, observerId) = await client.observeIsRunning()
-
-        var receivedValues: [Bool] = []
-        let task = Task {
-            for await isRunning in stream {
-                receivedValues.append(isRunning)
-            }
-        }
-
-        // Wait for initial value
-        try await Task.sleep(nanoseconds: NSEC_PER_SEC / 10) // 0.1 seconds
-
-        let initialCount = receivedValues.count
-        XCTAssertEqual(initialCount, 1, "Should have received initial value")
-
-        // Set to the same enabled state (no change)
-        await client.updateConfig(enabled: true)
-
-        // Wait to ensure no notification
-        try await Task.sleep(nanoseconds: NSEC_PER_SEC / 5) // 0.2 seconds
-
-        // Should not have received another notification
-        XCTAssertEqual(receivedValues.count, initialCount, "Should not notify when value doesn't change")
-
-        await client.stopObservingIsRunning(observerId)
-        task.cancel()
-    }
-
-    func testObserveIsRunningWithDisabledClient() async throws {
-        let client = DiagnosticsClient(
-            apiKey: Self.testApiKey,
-            instanceName: Self.testInstanceName,
-            enabled: false,
-            sampleRate: 1.0,
-            remoteConfigClient: nil,
-            urlSessionConfiguration: Self.testSessionConfiguration
-        )
-
-        let (stream, observerId) = await client.observeIsRunning()
-
-        // Should receive initial value of false
-        let initialValue = await stream.first { _ in true }
-        XCTAssertNotNil(initialValue)
-        XCTAssertFalse(initialValue ?? true)
-
-        await client.stopObservingIsRunning(observerId)
-    }
-
-    func testObserveIsRunningReenableClient() async throws {
-        let client = DiagnosticsClient(
-            apiKey: Self.testApiKey,
-            instanceName: Self.testInstanceName,
-            enabled: false,
-            sampleRate: 1.0,
-            remoteConfigClient: nil,
-            urlSessionConfiguration: Self.testSessionConfiguration
-        )
-
-        let (stream, observerId) = await client.observeIsRunning()
-
-        var receivedValues: [Bool] = []
-        let valueExpectation = XCTestExpectation(description: "Received value change")
-        valueExpectation.expectedFulfillmentCount = 2 // Initial + change
-
-        let observerTask = Task {
-            for await isRunning in stream {
-                receivedValues.append(isRunning)
-                if receivedValues.count >= 2 {
-                    break
-                }
-            }
-        }
-
-        // Wait a bit for initial value
-        try await Task.sleep(nanoseconds: NSEC_PER_SEC / 10) // 0.1 seconds
-
-        // Re-enable client
-        await client.updateConfig(enabled: true)
-
-        // Wait for task to complete (ensures all array modifications are done)
-        await observerTask.value
-
-        XCTAssertEqual(receivedValues.count, 2)
-        XCTAssertFalse(receivedValues[0], "Initial value should be false")
-        XCTAssertTrue(receivedValues[1], "After enable should be true")
-
-        await client.stopObservingIsRunning(observerId)
     }
 
     func testBasicDiagnosticsTagsSetOnlyOnce() async throws {
         // Start with enabled client
         let client = DiagnosticsClient(
             apiKey: Self.testApiKey,
-            instanceName: Self.testInstanceName,
+            instanceName: testInstanceName,
             enabled: true,
             sampleRate: 1.0,
             remoteConfigClient: nil,
@@ -923,7 +616,6 @@ final class DiagnosticsClientTests: XCTestCase {
 
         // Wait for initial setup (initialization task sets basic diagnostics tags)
         await client.initializationTask?.value
-        await client.isRunningObserverTask?.value
 
         // Check the in-memory counter directly
         let counterAfterInit = await client.storage.counters["sampled.in.and.enabled"]
@@ -931,9 +623,9 @@ final class DiagnosticsClientTests: XCTestCase {
 
         // Now disable and re-enable the client
         await client.updateConfig(enabled: false)
-        try await Task.sleep(nanoseconds: NSEC_PER_SEC / 10) // 0.1 seconds
+        await client.initializationTask?.value
         await client.updateConfig(enabled: true)
-        try await Task.sleep(nanoseconds: NSEC_PER_SEC / 5) // 0.2 seconds
+        await client.initializationTask?.value
 
         // Check the counter again - it should still be 1
         let counterAfterReEnable = await client.storage.counters["sampled.in.and.enabled"]
@@ -1030,7 +722,7 @@ final class DiagnosticsClientTests: XCTestCase {
         await oldSession.recordEvent(name: "session_start", properties: ["timestamp": "2024-01-01"])
 
         // Manually trigger persistence to save to disk
-        await oldSession.persistIfNeeded()
+        await oldSession.storage.persistIfNeeded()
 
         // Step 2: Create a new session (simulating app restart)
         TestDiagnosticsHandler.responseHandler = { request in
@@ -1100,7 +792,7 @@ final class DiagnosticsClientTests: XCTestCase {
         // Create a previous session and persist
         let oldSession = DiagnosticsClient(
             apiKey: Self.testApiKey,
-            instanceName: Self.testInstanceName,
+            instanceName: testInstanceName,
             enabled: true,
             sampleRate: 1.0,
             remoteConfigClient: nil,
@@ -1109,7 +801,7 @@ final class DiagnosticsClientTests: XCTestCase {
 
         await oldSession.setTag(name: "multi_session_test", value: "session_1")
         await oldSession.increment(name: "test_counter", size: 10)
-        await oldSession.persistIfNeeded()
+        await oldSession.storage.persistIfNeeded()
         await oldSession.stopFlushTimer()
 
         // Wait a moment to ensure timestamps are different
@@ -1125,7 +817,7 @@ final class DiagnosticsClientTests: XCTestCase {
 
         let newSession = DiagnosticsClient(
             apiKey: Self.testApiKey,
-            instanceName: Self.testInstanceName,
+            instanceName: testInstanceName,
             enabled: true,
             sampleRate: 1.0,
             remoteConfigClient: nil,
@@ -1148,7 +840,7 @@ final class DiagnosticsClientTests: XCTestCase {
         // Create and persist old session data
         let oldSession = DiagnosticsClient(
             apiKey: Self.testApiKey,
-            instanceName: Self.testInstanceName,
+            instanceName: testInstanceName,
             enabled: true,
             sampleRate: 1.0,
             remoteConfigClient: nil,
@@ -1156,7 +848,7 @@ final class DiagnosticsClientTests: XCTestCase {
         )
 
         await oldSession.setTag(name: "old_data", value: "should_be_cleared")
-        await oldSession.persistIfNeeded()
+        await oldSession.storage.persistIfNeeded()
         await oldSession.stopFlushTimer()
 
         // First new session uploads the data
@@ -1167,7 +859,7 @@ final class DiagnosticsClientTests: XCTestCase {
 
         let firstNewSession = DiagnosticsClient(
             apiKey: Self.testApiKey,
-            instanceName: Self.testInstanceName,
+            instanceName: testInstanceName,
             enabled: true,
             sampleRate: 1.0,
             remoteConfigClient: nil,
@@ -1194,8 +886,8 @@ final class DiagnosticsClientTests: XCTestCase {
             urlSessionConfiguration: Self.testSessionConfiguration
         )
 
-        // Give it a moment to potentially upload (but it shouldn't)
-        try await Task.sleep(nanoseconds: NSEC_PER_SEC / 2) // 0.5 seconds
+        // Wait for initialization to complete (which includes flushing previous sessions)
+        await secondNewSession.initializationTask?.value
 
         // Should not have uploaded historic data again (might upload current session data from auto-instrumentation)
         // The key is that the old_data tag should not appear in any uploads
@@ -1210,7 +902,7 @@ final class DiagnosticsClientTests: XCTestCase {
         // DiagnosticsClient should handle this gracefully
         let client = DiagnosticsClient(
             apiKey: "invalid api key with spaces",
-            instanceName: Self.testInstanceName,
+            instanceName: testInstanceName,
             enabled: true,
             sampleRate: 1.0,
             remoteConfigClient: nil,
@@ -1220,7 +912,7 @@ final class DiagnosticsClientTests: XCTestCase {
         await client.setTag(name: "test", value: "value")
 
         // Should not crash
-        let isRunning = await client.isRunning
+        let isRunning = await client.shouldTrack
         XCTAssertTrue(isRunning)
     }
 
@@ -1240,7 +932,7 @@ final class DiagnosticsClientTests: XCTestCase {
         await client.flush()
 
         // Should handle slow responses gracefully without crashing
-        let isRunning = await client.isRunning
+        let isRunning = await client.shouldTrack
         XCTAssertTrue(isRunning)
     }
 
@@ -1255,7 +947,7 @@ final class DiagnosticsClientTests: XCTestCase {
         await client.flush()
 
         // Should handle error gracefully
-        let isRunning = await client.isRunning
+        let isRunning = await client.shouldTrack
         XCTAssertTrue(isRunning)
     }
 
@@ -1270,7 +962,7 @@ final class DiagnosticsClientTests: XCTestCase {
         await client.flush()
 
         // Should handle error gracefully
-        let isRunning = await client.isRunning
+        let isRunning = await client.shouldTrack
         XCTAssertTrue(isRunning)
     }
 
@@ -1279,7 +971,7 @@ final class DiagnosticsClientTests: XCTestCase {
     private func makeDiagnosticsClient() -> DiagnosticsClient {
         return DiagnosticsClient(
             apiKey: Self.testApiKey,
-            instanceName: Self.testInstanceName,
+            instanceName: testInstanceName,
             enabled: true,
             sampleRate: 1.0,
             remoteConfigClient: nil,

@@ -8,7 +8,11 @@
 import Foundation
 
 /// Internal utility to catch crashes and save crash reports to disk.
-/// Thread-safe, works on any thread. Register last for compatibility with other crash reporters.
+/// Thread-safe, works on any thread.
+///
+/// **Recommended:** Register last to ensure CrashCatcher runs before other crash reporters.
+/// Registering first is safe and won't break other libraries, but CrashCatcher may be skipped
+/// if subsequent crash reporters don't call previous handlers in the chain.
 class CrashCatcher {
     private static var previousExceptionHandler: (@convention(c) (NSException) -> Void)?
     private static let fatalSignals: [Int32] = [SIGABRT, SIGILL, SIGSEGV, SIGFPE, SIGBUS, SIGPIPE, SIGTRAP]

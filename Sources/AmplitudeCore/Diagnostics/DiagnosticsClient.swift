@@ -16,17 +16,27 @@ let EU_SERVER_URL = "https://diagnostics.prod.eu-central-1.amplitude.com/v1/capt
 @usableFromInline let DEFAULT_SAMPLE_RATE: Double = 0
 #endif
 
+#if DEBUG
+@usableFromInline let DEFAULT_FLUSH_INTERVAL: UInt64 = 5
+#else
+@usableFromInline let DEFAULT_FLUSH_INTERVAL: UInt64 = 300
+#endif
+
 @_spi(Internal)
 @available(macOS 10.15, iOS 13.0, watchOS 6.0, tvOS 13.0, *)
 public actor DiagnosticsClient: CoreDiagnostics {
 
+    public typealias StateCallback = @Sendable () -> Void
+
     private let apiKey: String
     private let logger: CoreLogger
-    internal let storage: DiagnosticsStorage
+    let storage: DiagnosticsStorage
     private let urlSession: URLSession
     private let serverUrl: String
     private let startTimestamp: TimeInterval
-    public private(set) var isRunning: Bool
+    private let flushIntervalNanoSec: UInt64
+    private(set) var shouldTrack: Bool
+    private var enableCrashTracking: Bool = false
 
     private var remoteConfigClient: RemoteConfigClient?
 
@@ -34,11 +44,12 @@ public actor DiagnosticsClient: CoreDiagnostics {
     private var sampleRate: Double
     private nonisolated(unsafe) var remoteConfigSubscription: Sendable?
 
+    private var didSetBasicTags: Bool = false
+    private var didRegisterCrashTracking: Bool = false
+    private var didFlushPreviousSession = false
+
     var flushTask: Task<Void, Never>?
-    
-    private var isRunningContinuations: [UUID: AsyncStream<Bool>.Continuation] = [:]
-    private(set) var isRunningObserverTask: Task<Void, Never>?
-    private var isRunningObserverId: UUID?
+
     private(set) nonisolated(unsafe) var initializationTask: Task<Void, Never>?
 
     public init(apiKey: String,
@@ -47,148 +58,82 @@ public actor DiagnosticsClient: CoreDiagnostics {
                 logger: CoreLogger = OSLogger(logLevel: .error),
                 enabled: Bool = true,
                 sampleRate: Double = DEFAULT_SAMPLE_RATE,
+                crashCaptureEnabled: Bool = false,
                 remoteConfigClient: RemoteConfigClient?,
+                flushIntervalNanoSec: UInt64 = DEFAULT_FLUSH_INTERVAL * NSEC_PER_SEC,
                 urlSessionConfiguration: URLSessionConfiguration = .ephemeral) {
         let startTimestamp = Date().timeIntervalSince1970
         self.apiKey = apiKey
         self.logger = logger
         self.startTimestamp = startTimestamp
+        self.flushIntervalNanoSec = flushIntervalNanoSec
         self.serverUrl = serverZone == .EU ? EU_SERVER_URL : US_SERVER_URL
         self.urlSession = URLSession(configuration: urlSessionConfiguration)
+
         self.enabled = enabled
-        self.sampleRate = sampleRate
+        let clampedSampleRate = max(0.0, min(1.0, sampleRate))
+        self.sampleRate = clampedSampleRate
+        let shouldTrack = enabled && Sample.isInSample(seed: String(startTimestamp), sampleRate: clampedSampleRate)
+        self.shouldTrack = shouldTrack
+
         self.storage = DiagnosticsStorage(instanceName: instanceName,
                                           sessionStartAt: startTimestamp,
-                                          logger: logger)
-        let sampleRate = max(0.0, min(1.0, sampleRate))
-        let isRunning = enabled && Sample.isInSample(seed: String(startTimestamp), sampleRate: sampleRate)
-        self.isRunning = isRunning
+                                          logger: logger,
+                                          shouldStore: shouldTrack)
+
         self.remoteConfigClient = remoteConfigClient
+        remoteConfigSubscription = remoteConfigClient?.subscribe(key: Constants.RemoteConfig.Key.diagnostics) { [weak self] config, _, _ in
+            guard let config else { return }
 
-        remoteConfigSubscription = remoteConfigClient?.subscribe(key: Constants.RemoteConfig.Key.diagnostics) { config, _, _ in
-            guard let config else {
-                return
-            }
-
-            Task { [weak self] in
+            Task {
                 let enabled = config["enabled"] as? Bool
                 let sampleRate = config["sampleRate"] as? Double
-                await self?.updateConfig(enabled: enabled, sampleRate: sampleRate)
+
+                var enableCrashTracking = false
+                if let availabilities = config["availabilities"] as? [String: String],
+                   let availableFrom = availabilities["CrashTracking"],
+                   let available = try? AmplitudeContext.coreLibraryVersion.isGreaterThanOrEqualToVersion(availableFrom) {
+                    enableCrashTracking = available
+                }
+
+                await self?.updateConfig(enabled: enabled, sampleRate: sampleRate, enableCrashTracking: enableCrashTracking)
             }
         }
 
-        initializationTask = Task { [weak self] in
-            await self?.setupIsRunningObserver()
+        initializationTask = Task {
+            await self.initializeTasksIfNeeded()
         }
-    }
-
-    private func setupIsRunningObserver() {
-        let (stream, observerId) = observeIsRunning()
-        isRunningObserverId = observerId
-        isRunningObserverTask = Task { [weak self] in
-            for await isRunning in stream {
-                guard let self, isRunning else { continue }
-                // Set basic diagnostics tags once and then unsubscribe
-
-                async let flushOperation: Void = {
-                    if await self.enabled {
-                        await self.flushPreviousSessions()
-                    }
-                }()
-
-                async let tagOperation: Void = await self.setBasicDiagnosticsTags()
-                async let crashCheckOperation: Void = await self.setupCrashCatch()
-
-                _ = await (flushOperation, tagOperation, crashCheckOperation)
-
-                await self.cleanupIsRunningObserver()
-                break
-            }
-        }
-    }
-
-    private func cleanupIsRunningObserver() {
-        if let observerId = isRunningObserverId {
-            stopObservingIsRunning(observerId)
-            isRunningObserverId = nil
-        }
-        isRunningObserverTask?.cancel()
-        isRunningObserverTask = nil
     }
 
     public func setTag(name: String, value: String) async {
-        guard isRunning else { return }
         await storage.setTag(name: name, value: value)
         startFlushTimerIfNeeded()
     }
 
     public func setTags(_ tags: [String: String]) async {
-        guard isRunning else { return }
         await storage.setTags(tags)
         startFlushTimerIfNeeded()
     }
 
     public func increment(name: String, size: Int) async {
-        guard isRunning else { return }
         await storage.increment(name: name, size: size)
         startFlushTimerIfNeeded()
     }
 
     public func recordHistogram(name: String, value: Double) async {
-        guard isRunning else { return }
         await storage.recordHistogram(name: name, value: value)
         startFlushTimerIfNeeded()
     }
 
     public func recordEvent(name: String, properties: [String: any Sendable]? = nil) async {
-        guard isRunning else { return }
         await storage.recordEvent(name: name, properties: properties)
         startFlushTimerIfNeeded()
     }
-    
-    /// Observes changes to the `isRunning` state.
-    /// - Returns: A tuple containing an AsyncStream that emits `Bool` values when `isRunning` changes,
-    ///           and a UUID identifier that can be used to stop observing.
-    /// - Note: The stream immediately yields the current `isRunning` value upon subscription.
-    public func observeIsRunning() -> (stream: AsyncStream<Bool>, id: UUID) {
-        let id = UUID()
-        let currentValue = isRunning
-        let stream = AsyncStream<Bool> { [weak self] continuation in
-            // Send current value immediately
-            continuation.yield(currentValue)
-            // Store continuation for future updates
-            Task {
-                await self?.storeContinuation(continuation, for: id)
-            }
-        }
-        return (stream, id)
-    }
-    
-    /// Stops observing `isRunning` changes for the given subscription ID.
-    /// - Parameter id: The UUID identifier returned from `observeIsRunning()`.
-    public func stopObservingIsRunning(_ id: UUID) {
-        isRunningContinuations[id]?.finish()
-        isRunningContinuations.removeValue(forKey: id)
-    }
-    
-    private func storeContinuation(_ continuation: AsyncStream<Bool>.Continuation, for id: UUID) {
-        isRunningContinuations[id] = continuation
-    }
 
-    func flush() async {
-        // Dump and clear data (keeps tags)
-        let snapshot = await storage.dumpAndClear()
+    public func flush() async {
+        guard shouldTrack, await storage.didChanged else { return }
+        let snapshot = await storage.dumpAndClearCurrentSession()
         await uploadSnapshot(snapshot)
-    }
-
-    func flushPreviousSessions() async {
-        guard enabled else { return }
-        // Load historic data from previous sessions and upload them
-        let historicSnapshots = await storage.loadAndClearHistoricData()
-
-        for snapshot in historicSnapshots {
-            await uploadSnapshot(snapshot)
-        }
     }
 
     func uploadSnapshot(_ snapshot: DiagnosticsSnapshot) async {
@@ -240,11 +185,47 @@ public actor DiagnosticsClient: CoreDiagnostics {
         }
     }
 
-    func startFlushTimerIfNeeded() {
-        guard flushTask == nil else { return }
+    func updateConfig(enabled: Bool? = nil, sampleRate: Double? = nil, enableCrashTracking: Bool? = nil) async {
+        if let enabled {
+            self.enabled = enabled
+        }
+        if let sampleRate {
+            let clampedRate = max(0.0, min(1.0, sampleRate))
+            self.sampleRate = clampedRate
+        }
+        if let enableCrashTracking {
+            self.enableCrashTracking = enableCrashTracking
+        }
 
+        shouldTrack = self.enabled && Sample.isInSample(seed: String(self.startTimestamp), sampleRate: self.sampleRate)
+        await storage.setShouldStore(shouldTrack)
+        await self.initializeTasksIfNeeded()
+    }
+
+    func initializeTasksIfNeeded() async {
+        async let previous: () = self.flushPreviousSessions()
+        async let basicTags: () = self.setupBasicDiagnosticsTags()
+        async let crashCatch: () = self.setupCrashCatch()
+
+        _ = await (previous, basicTags, crashCatch)
+    }
+
+    deinit {
+        if let remoteConfigSubscription {
+            remoteConfigClient?.unsubscribe(remoteConfigSubscription)
+        }
+        
+        initializationTask?.cancel()
+        flushTask?.cancel()
+    }
+
+    // MARK: - Flush Timer
+    func startFlushTimerIfNeeded() {
+        guard shouldTrack, flushTask == nil else { return }
+
+        let flushInterval = self.flushIntervalNanoSec
         flushTask = Task { [weak self] in
-            try? await Task.sleep(nanoseconds: 300 * NSEC_PER_SEC) // 5 min
+            try? await Task.sleep(nanoseconds: flushInterval)
             guard let self else { return }
             await self.flush()
             await self.markFlushTimerFinished()
@@ -256,59 +237,31 @@ public actor DiagnosticsClient: CoreDiagnostics {
         flushTask = nil
     }
 
+    func waitForPendingFlushTask() async throws {
+        await flushTask?.value
+    }
+
     private func markFlushTimerFinished() {
         flushTask = nil
     }
 
-    func persistIfNeeded() async {
-        await storage.persistIfNeeded()
-    }
+    // MARK: - Initialization Tasks
 
-    func updateConfig(enabled: Bool? = nil, sampleRate: Double? = nil) {
-        if let enabled {
-            self.enabled = enabled
-        }
-        if let sampleRate {
-            let clampedRate = max(0.0, min(1.0, sampleRate))
-            self.sampleRate = clampedRate
-        }
+    func flushPreviousSessions() async {
+        guard enabled, !didFlushPreviousSession else { return }
+        didFlushPreviousSession = true
 
-        updateIsRunning()
-    }
+        let historicSnapshots = await storage.loadAndClearPreviousSessions()
 
-    private func updateIsRunning() {
-        let oldValue = isRunning
-        isRunning = enabled && Sample.isInSample(seed: String(self.startTimestamp), sampleRate: sampleRate)
-
-        // Notify observers if value changed
-        if oldValue != isRunning {
-            for continuation in isRunningContinuations.values {
-                continuation.yield(isRunning)
-            }
+        for snapshot in historicSnapshots {
+            await uploadSnapshot(snapshot)
         }
     }
 
-    deinit {
-        if let remoteConfigSubscription {
-            remoteConfigClient?.unsubscribe(remoteConfigSubscription)
-        }
-        
-        // Cancel initialization task
-        initializationTask?.cancel()
-        
-        // Clean up isRunning observer
-        isRunningObserverTask?.cancel()
-        
-        // Clean up all isRunning observers
-        for continuation in isRunningContinuations.values {
-            continuation.finish()
-        }
-        
-        // Cancel flush task
-        flushTask?.cancel()
-    }
+    private func setupBasicDiagnosticsTags() async {
+        guard !didSetBasicTags else { return }
+        didSetBasicTags = true
 
-    private func setBasicDiagnosticsTags() async {
         await increment(name: "sampled.in.and.enabled")
 
         var staticContext = [String: String]()
@@ -330,6 +283,9 @@ public actor DiagnosticsClient: CoreDiagnostics {
     }
 
     private func setupCrashCatch() async {
+        guard enabled, enableCrashTracking, !didRegisterCrashTracking else { return }
+        didRegisterCrashTracking = true
+
         CrashCatcher.register()
 
         if let crash = CrashCatcher.checkForPreviousCrash() {

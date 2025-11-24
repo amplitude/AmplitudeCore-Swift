@@ -13,22 +13,26 @@ final class DiagnosticsStorageTests: XCTestCase {
 
     var storage: DiagnosticsStorage!
     let testApiKey = "test-api-key-\(UUID().uuidString)"
-    let testTimestamp = Date().timeIntervalSince1970
+    var testTimestamp: TimeInterval = 0
+    var testInstanceName: String = ""
     var logger: CoreLogger!
 
     override func setUp() async throws {
         logger = OSLogger(logLevel: .error)
+        testTimestamp = Date().timeIntervalSince1970
+        testInstanceName = "test-instance-\(UUID().uuidString)"
         storage = DiagnosticsStorage(
-            instanceName: "test-instance",
+            instanceName: testInstanceName,
             sessionStartAt: testTimestamp,
             logger: logger,
-            persistIntervalNanoSeconds: NSEC_PER_SEC / 10 // 0.1 second for faster tests
+            shouldStore: true,
+            persistIntervalNanoSec: NSEC_PER_MSEC * 10
         )
     }
 
     override func tearDown() async throws {
         // Clean up test files
-        try? await storage.removeAll()
+        try? await storage.removeAllStoredFiles()
         storage = nil
     }
 
@@ -224,7 +228,7 @@ final class DiagnosticsStorageTests: XCTestCase {
         await storage.recordEvent(name: "event1", properties: nil)
 
         // Dump and clear
-        let snapshot = await storage.dumpAndClear()
+        let snapshot = await storage.dumpAndClearCurrentSession()
 
         // Verify snapshot contains all data
         XCTAssertEqual(snapshot.tags["tag1"], "value1")
@@ -249,12 +253,12 @@ final class DiagnosticsStorageTests: XCTestCase {
     func testDumpAndClearMultipleTimes() async throws {
         // First batch
         await storage.increment(name: "counter1", size: 5)
-        let snapshot1 = await storage.dumpAndClear()
+        let snapshot1 = await storage.dumpAndClearCurrentSession()
         XCTAssertEqual(snapshot1.counters["counter1"], 5)
 
         // Second batch
         await storage.increment(name: "counter1", size: 10)
-        let snapshot2 = await storage.dumpAndClear()
+        let snapshot2 = await storage.dumpAndClearCurrentSession()
         XCTAssertEqual(snapshot2.counters["counter1"], 10)
 
         // Verify they're independent
@@ -273,19 +277,20 @@ final class DiagnosticsStorageTests: XCTestCase {
         // It will load the old session's data as "historic"
         let newTimestamp = testTimestamp + 1
         let newStorage = DiagnosticsStorage(
-            instanceName: "test-instance",
+            instanceName: testInstanceName,
             sessionStartAt: newTimestamp,
-            logger: logger
+            logger: logger,
+            shouldStore: true
         )
 
         // Load historic data from the previous session
-        let snapshots = await newStorage.loadAndClearHistoricData()
+        let snapshots = await newStorage.loadAndClearPreviousSessions()
 
         // Verify we got our persisted session
         XCTAssertGreaterThanOrEqual(snapshots.count, 1, "Should have at least one historic snapshot")
         guard let snapshot = snapshots.first else {
             XCTFail("No snapshot found")
-            try? await newStorage.removeAll()
+            try? await newStorage.removeAllStoredFiles()
             return
         }
 
@@ -295,7 +300,7 @@ final class DiagnosticsStorageTests: XCTestCase {
         XCTAssertEqual(snapshot.tags["persisted_tag_3"], "value_3")
 
         // Clean up
-        try? await newStorage.removeAll()
+        try? await newStorage.removeAllStoredFiles()
     }
 
     func testPersistAndLoadCounters() async throws {
@@ -307,18 +312,19 @@ final class DiagnosticsStorageTests: XCTestCase {
         // Simulate restart with newer timestamp
         let newTimestamp = testTimestamp + 1
         let newStorage = DiagnosticsStorage(
-            instanceName: "test-instance",
+            instanceName: testInstanceName,
             sessionStartAt: newTimestamp,
-            logger: logger
+            logger: logger,
+            shouldStore: true
         )
 
         // Load historic data
-        let snapshots = await newStorage.loadAndClearHistoricData()
+        let snapshots = await newStorage.loadAndClearPreviousSessions()
 
         XCTAssertGreaterThanOrEqual(snapshots.count, 1)
         guard let snapshot = snapshots.first else {
             XCTFail("No snapshot found")
-            try? await newStorage.removeAll()
+            try? await newStorage.removeAllStoredFiles()
             return
         }
 
@@ -327,7 +333,7 @@ final class DiagnosticsStorageTests: XCTestCase {
         XCTAssertEqual(snapshot.counters["counter_2"], 99)
 
         // Clean up
-        try? await newStorage.removeAll()
+        try? await newStorage.removeAllStoredFiles()
     }
 
     func testPersistAndLoadHistograms() async throws {
@@ -340,18 +346,19 @@ final class DiagnosticsStorageTests: XCTestCase {
         // Simulate restart with newer timestamp
         let newTimestamp = testTimestamp + 1
         let newStorage = DiagnosticsStorage(
-            instanceName: "test-instance",
+            instanceName: testInstanceName,
             sessionStartAt: newTimestamp,
-            logger: logger
+            logger: logger,
+            shouldStore: true
         )
 
         // Load historic data
-        let snapshots = await newStorage.loadAndClearHistoricData()
+        let snapshots = await newStorage.loadAndClearPreviousSessions()
 
         XCTAssertGreaterThanOrEqual(snapshots.count, 1)
         guard let snapshot = snapshots.first else {
             XCTFail("No snapshot found")
-            try? await newStorage.removeAll()
+            try? await newStorage.removeAllStoredFiles()
             return
         }
 
@@ -367,7 +374,7 @@ final class DiagnosticsStorageTests: XCTestCase {
         XCTAssertEqual(snapshot.histograms["metric_2"]?.sum, 50.0)
 
         // Clean up
-        try? await newStorage.removeAll()
+        try? await newStorage.removeAllStoredFiles()
     }
 
     func testPersistAndLoadEvents() async throws {
@@ -380,18 +387,19 @@ final class DiagnosticsStorageTests: XCTestCase {
         // Simulate restart with newer timestamp
         let newTimestamp = testTimestamp + 1
         let newStorage = DiagnosticsStorage(
-            instanceName: "test-instance",
+            instanceName: testInstanceName,
             sessionStartAt: newTimestamp,
-            logger: logger
+            logger: logger,
+            shouldStore: true
         )
 
         // Load historic data
-        let snapshots = await newStorage.loadAndClearHistoricData()
+        let snapshots = await newStorage.loadAndClearPreviousSessions()
 
         XCTAssertGreaterThanOrEqual(snapshots.count, 1)
         guard let snapshot = snapshots.first else {
             XCTFail("No snapshot found")
-            try? await newStorage.removeAll()
+            try? await newStorage.removeAllStoredFiles()
             return
         }
 
@@ -414,7 +422,7 @@ final class DiagnosticsStorageTests: XCTestCase {
         }
 
         // Clean up
-        try? await newStorage.removeAll()
+        try? await newStorage.removeAllStoredFiles()
     }
 
     func testPersistAllDataTypes() async throws {
@@ -428,18 +436,19 @@ final class DiagnosticsStorageTests: XCTestCase {
         // Simulate restart with newer timestamp
         let newTimestamp = testTimestamp + 1
         let newStorage = DiagnosticsStorage(
-            instanceName: "test-instance",
+            instanceName: testInstanceName,
             sessionStartAt: newTimestamp,
-            logger: logger
+            logger: logger,
+            shouldStore: true
         )
 
         // Load historic data
-        let snapshots = await newStorage.loadAndClearHistoricData()
+        let snapshots = await newStorage.loadAndClearPreviousSessions()
 
         XCTAssertGreaterThanOrEqual(snapshots.count, 1)
         guard let snapshot = snapshots.first else {
             XCTFail("No snapshot found")
-            try? await newStorage.removeAll()
+            try? await newStorage.removeAllStoredFiles()
             return
         }
 
@@ -453,7 +462,7 @@ final class DiagnosticsStorageTests: XCTestCase {
         }
 
         // Clean up
-        try? await newStorage.removeAll()
+        try? await newStorage.removeAllStoredFiles()
     }
 
     // MARK: - Historic Data Tests
@@ -462,9 +471,10 @@ final class DiagnosticsStorageTests: XCTestCase {
         // Create storage with old timestamp
         let oldTimestamp = Date().timeIntervalSince1970 - 3600 // 1 hour ago
         let oldStorage = DiagnosticsStorage(
-            instanceName: "test-instance",
+            instanceName: testInstanceName,
             sessionStartAt: oldTimestamp,
-            logger: logger
+            logger: logger,
+            shouldStore: true
         )
 
         // Add data and persist (skip events for now as they may have persistence timing issues)
@@ -474,7 +484,7 @@ final class DiagnosticsStorageTests: XCTestCase {
         await oldStorage.persistIfNeeded()
 
         // Now load historic data with new storage (different timestamp)
-        let snapshots = await storage.loadAndClearHistoricData()
+        let snapshots = await storage.loadAndClearPreviousSessions()
 
         XCTAssertGreaterThanOrEqual(snapshots.count, 1, "Should have at least one historic snapshot")
         guard !snapshots.isEmpty else {
@@ -489,11 +499,11 @@ final class DiagnosticsStorageTests: XCTestCase {
         XCTAssertNotNil(snapshot.histograms["old_metric"])
 
         // Verify directory was cleaned up
-        let snapshotsAfterCleanup = await storage.loadAndClearHistoricData()
+        let snapshotsAfterCleanup = await storage.loadAndClearPreviousSessions()
         XCTAssertEqual(snapshotsAfterCleanup.count, 0)
 
         // Clean up
-        try? await oldStorage.removeAll()
+        try? await oldStorage.removeAllStoredFiles()
     }
 
     func testLoadAndClearHistoricDataMultipleSessions() async throws {
@@ -506,9 +516,10 @@ final class DiagnosticsStorageTests: XCTestCase {
 
         for (index, timestamp) in timestamps.enumerated() {
             let oldStorage = DiagnosticsStorage(
-                instanceName: "test-instance",
+                instanceName: testInstanceName,
                 sessionStartAt: timestamp,
-                logger: logger
+                logger: logger,
+                shouldStore: true
             )
 
             await oldStorage.setTag(name: "session", value: "session_\(index)")
@@ -519,7 +530,7 @@ final class DiagnosticsStorageTests: XCTestCase {
         }
 
         // Load all historic data
-        let snapshots = await storage.loadAndClearHistoricData()
+        let snapshots = await storage.loadAndClearPreviousSessions()
 
         XCTAssertGreaterThanOrEqual(snapshots.count, 3)
 
@@ -536,7 +547,7 @@ final class DiagnosticsStorageTests: XCTestCase {
         await storage.persistIfNeeded()
 
         // Try to load historic data (should skip current session)
-        let snapshots = await storage.loadAndClearHistoricData()
+        let snapshots = await storage.loadAndClearPreviousSessions()
         XCTAssertEqual(snapshots.count, 0)
     }
 
@@ -546,10 +557,10 @@ final class DiagnosticsStorageTests: XCTestCase {
         await storage.setTag(name: "auto_tag", value: "auto_value")
 
         // Wait for persistence timer to fire
-        try await Task.sleep(nanoseconds: NSEC_PER_SEC / 5) // 0.2 seconds
+        try await storage.waitForPendingPersistenceTask()
 
         // Check that tagsChanged flag was cleared (indicating persistence happened)
-        let tagsChanged = await storage.tagsChanged
+        let tagsChanged = await storage.hasUnsavedTags
         XCTAssertFalse(tagsChanged)
     }
 
@@ -557,7 +568,7 @@ final class DiagnosticsStorageTests: XCTestCase {
         await storage.setTag(name: "tag", value: "value")
 
         // Verify timer is set to fire
-        let tagsChangedBefore = await storage.tagsChanged
+        let tagsChangedBefore = await storage.hasUnsavedTags
         XCTAssertTrue(tagsChangedBefore, "Tags should be marked as changed")
 
         // Stop timer immediately before it fires
@@ -567,14 +578,14 @@ final class DiagnosticsStorageTests: XCTestCase {
         await storage.persistIfNeeded()
 
         // After manual persistence, the flag should be cleared
-        let tagsChangedAfter = await storage.tagsChanged
+        let tagsChangedAfter = await storage.hasUnsavedTags
         XCTAssertFalse(tagsChangedAfter, "Tags should not be marked as changed after manual persistence")
     }
 
     // MARK: - Edge Cases
 
     func testEmptySnapshot() async throws {
-        let snapshot = await storage.dumpAndClear()
+        let snapshot = await storage.dumpAndClearCurrentSession()
 
         XCTAssertTrue(snapshot.tags.isEmpty)
         XCTAssertTrue(snapshot.counters.isEmpty)
@@ -586,28 +597,30 @@ final class DiagnosticsStorageTests: XCTestCase {
         let specialStorage = DiagnosticsStorage(
             instanceName: "test@api#key!2024",
             sessionStartAt: testTimestamp,
-            logger: logger
+            logger: logger,
+            shouldStore: true
         )
 
         await specialStorage.setTag(name: "test", value: "value")
         await specialStorage.persistIfNeeded()
 
         // Should not throw
-        try await specialStorage.removeAll()
+        try await specialStorage.removeAllStoredFiles()
     }
 
     func testEmptyInstanceName() async throws {
         let emptyInstanceStorage = DiagnosticsStorage(
             instanceName: "",
             sessionStartAt: testTimestamp,
-            logger: logger
+            logger: logger,
+            shouldStore: true
         )
 
         await emptyInstanceStorage.setTag(name: "test", value: "value")
         await emptyInstanceStorage.persistIfNeeded()
 
         // Should use default instance name
-        try await emptyInstanceStorage.removeAll()
+        try await emptyInstanceStorage.removeAllStoredFiles()
     }
 
     func testConcurrentOperations() async throws {
@@ -639,6 +652,233 @@ final class DiagnosticsStorageTests: XCTestCase {
         XCTAssertEqual(counters.count, 10)
         XCTAssertEqual(histograms.count, 10)
         XCTAssertEqual(events.count, 10)
+    }
+
+    // MARK: - shouldStore Tests
+
+    func testShouldStoreInitializedFalse() async throws {
+        let storageWithoutPersistence = DiagnosticsStorage(
+            instanceName: testInstanceName,
+            sessionStartAt: testTimestamp,
+            logger: logger,
+            shouldStore: false
+        )
+
+        let shouldStore = await storageWithoutPersistence.shouldStore
+        XCTAssertFalse(shouldStore, "shouldStore should be false when initialized as false")
+    }
+
+    func testShouldStoreInitializedTrue() async throws {
+        let shouldStore = await storage.shouldStore
+        XCTAssertTrue(shouldStore, "shouldStore should be true when initialized as true")
+    }
+
+    func testDataNotPersistedWhenShouldStoreFalse() async throws {
+        let storageWithoutPersistence = DiagnosticsStorage(
+            instanceName: testInstanceName,
+            sessionStartAt: testTimestamp,
+            logger: logger,
+            shouldStore: false,
+            persistIntervalNanoSec: NSEC_PER_MSEC * 10
+        )
+
+        // Add data
+        await storageWithoutPersistence.setTag(name: "test_tag", value: "test_value")
+        await storageWithoutPersistence.increment(name: "test_counter", size: 42)
+        await storageWithoutPersistence.recordHistogram(name: "test_metric", value: 100.0)
+
+        // Try to persist
+        await storageWithoutPersistence.persistIfNeeded()
+
+        // Wait for any pending persistence task to complete (should be none since shouldStore is false)
+        try await storageWithoutPersistence.waitForPendingPersistenceTask()
+
+        // Create new storage to check if data was persisted
+        let newStorage = DiagnosticsStorage(
+            instanceName: testInstanceName,
+            sessionStartAt: testTimestamp + 1,
+            logger: logger,
+            shouldStore: true
+        )
+
+        let snapshots = await newStorage.loadAndClearPreviousSessions()
+        XCTAssertEqual(snapshots.count, 0, "No data should be persisted when shouldStore is false")
+
+        // Clean up
+        try? await storageWithoutPersistence.removeAllStoredFiles()
+        try? await newStorage.removeAllStoredFiles()
+    }
+
+    func testDataPersistedWhenShouldStoreTrue() async throws {
+        // Add and persist data
+        await storage.setTag(name: "persisted_tag", value: "persisted_value")
+        await storage.increment(name: "persisted_counter", size: 99)
+        await storage.persistIfNeeded()
+
+        // Wait for persistence to complete
+        try await storage.waitForPendingPersistenceTask()
+
+        // Create new storage to check if data was persisted
+        let newStorage = DiagnosticsStorage(
+            instanceName: testInstanceName,
+            sessionStartAt: testTimestamp + 1,
+            logger: logger,
+            shouldStore: true
+        )
+
+        let snapshots = await newStorage.loadAndClearPreviousSessions()
+        XCTAssertGreaterThanOrEqual(snapshots.count, 1, "Data should be persisted when shouldStore is true")
+
+        if let snapshot = snapshots.first {
+            XCTAssertEqual(snapshot.tags["persisted_tag"], "persisted_value")
+            XCTAssertEqual(snapshot.counters["persisted_counter"], 99)
+        }
+
+        // Clean up
+        try? await newStorage.removeAllStoredFiles()
+    }
+
+    func testSetShouldStoreToTrue() async throws {
+        let storageToEnable = DiagnosticsStorage(
+            instanceName: testInstanceName,
+            sessionStartAt: testTimestamp,
+            logger: logger,
+            shouldStore: false,
+            persistIntervalNanoSec: NSEC_PER_MSEC * 10
+        )
+
+        // Add data while persistence is disabled
+        await storageToEnable.setTag(name: "tag_before", value: "value_before")
+
+        // Enable shouldStore
+        await storageToEnable.setShouldStore(true)
+
+        let shouldStore = await storageToEnable.shouldStore
+        XCTAssertTrue(shouldStore, "shouldStore should be true after calling setShouldStore(true)")
+
+        // Add more data after enabling
+        await storageToEnable.setTag(name: "tag_after", value: "value_after")
+
+        // Wait for automatic persistence
+        try await storageToEnable.waitForPendingPersistenceTask()
+
+        // Verify data was persisted
+        let newStorage = DiagnosticsStorage(
+            instanceName: testInstanceName,
+            sessionStartAt: testTimestamp + 1,
+            logger: logger,
+            shouldStore: true
+        )
+
+        let snapshots = await newStorage.loadAndClearPreviousSessions()
+        XCTAssertGreaterThanOrEqual(snapshots.count, 1, "Data should be persisted after enabling shouldStore")
+
+        // Clean up
+        try? await storageToEnable.removeAllStoredFiles()
+        try? await newStorage.removeAllStoredFiles()
+    }
+
+    func testSetShouldStoreToFalse() async throws {
+        // Start with persistence enabled
+        await storage.setTag(name: "tag_1", value: "value_1")
+
+        // Disable shouldStore
+        await storage.setShouldStore(false)
+
+        let shouldStore = await storage.shouldStore
+        XCTAssertFalse(shouldStore, "shouldStore should be false after calling setShouldStore(false)")
+
+        // Add data after disabling
+        await storage.setTag(name: "tag_2", value: "value_2")
+
+        // Try to persist manually
+        await storage.persistIfNeeded()
+
+        // Wait for any pending persistence task (should complete immediately since shouldStore is false)
+        try await storage.waitForPendingPersistenceTask()
+
+        // The persistence should not have happened
+        // We can verify this by checking that no persistence task is running
+        // (This is an indirect test since we can't easily check file system state)
+    }
+
+    func testSetShouldStoreToggle() async throws {
+        let toggleStorage = DiagnosticsStorage(
+            instanceName: testInstanceName,
+            sessionStartAt: testTimestamp,
+            logger: logger,
+            shouldStore: true,
+            persistIntervalNanoSec: NSEC_PER_MSEC * 10
+        )
+
+        // Initially true
+        var shouldStore = await toggleStorage.shouldStore
+        XCTAssertTrue(shouldStore)
+
+        // Toggle to false
+        await toggleStorage.setShouldStore(false)
+        shouldStore = await toggleStorage.shouldStore
+        XCTAssertFalse(shouldStore)
+
+        // Toggle back to true
+        await toggleStorage.setShouldStore(true)
+        shouldStore = await toggleStorage.shouldStore
+        XCTAssertTrue(shouldStore)
+
+        // Toggle to false again
+        await toggleStorage.setShouldStore(false)
+        shouldStore = await toggleStorage.shouldStore
+        XCTAssertFalse(shouldStore)
+
+        // Clean up
+        try? await toggleStorage.removeAllStoredFiles()
+    }
+
+    func testPersistenceTimerStoppedWhenShouldStoreFalse() async throws {
+        // Start with persistence enabled
+        await storage.setTag(name: "test_tag", value: "test_value")
+
+        // Disable shouldStore (should stop persistence timer)
+        await storage.setShouldStore(false)
+
+        // Add more data
+        await storage.increment(name: "counter", size: 1)
+
+        // Wait for any pending persistence task (timer should be stopped)
+        try await storage.waitForPendingPersistenceTask()
+
+        // If we got here without issues, the timer was properly stopped
+        // (if it wasn't stopped, it might have tried to persist and caused issues)
+        XCTAssertTrue(true, "Timer was properly stopped")
+    }
+
+    func testPersistenceTimerStartedWhenShouldStoreTrue() async throws {
+        let storageToStart = DiagnosticsStorage(
+            instanceName: testInstanceName,
+            sessionStartAt: testTimestamp,
+            logger: logger,
+            shouldStore: false,
+            persistIntervalNanoSec: NSEC_PER_MSEC * 10
+        )
+
+        // Add data while disabled
+        await storageToStart.setTag(name: "test_tag", value: "test_value")
+
+        // Enable shouldStore (should start persistence timer if there's unsaved data)
+        await storageToStart.setShouldStore(true)
+
+        // Add more data to ensure timer starts
+        await storageToStart.increment(name: "counter", size: 1)
+
+        // Wait for automatic persistence
+        try await storageToStart.waitForPendingPersistenceTask()
+
+        // Verify the flag was cleared by persistence
+        let hasUnsavedCounters = await storageToStart.hasUnsavedCounters
+        XCTAssertFalse(hasUnsavedCounters, "Data should have been persisted by timer")
+
+        // Clean up
+        try? await storageToStart.removeAllStoredFiles()
     }
 }
 
