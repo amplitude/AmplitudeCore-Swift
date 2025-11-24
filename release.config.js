@@ -85,7 +85,7 @@ module.exports = {
         "prepareCmd": "cat docs/Carthage/AmplitudeCore.json | jq --arg RELEASE '${nextRelease.version}' '. + {$RELEASE: \"https://github.com/amplitude/AmplitudeCore-Swift/releases/download/v\\($RELEASE)/AmplitudeCore.zip\"}' > docs/Carthage/AmplitudeCore.json.tmp && mv docs/Carthage/AmplitudeCore.json.tmp docs/Carthage/AmplitudeCore.json"
       }],
       ["@semantic-release/git", {
-        "assets": ["AmplitudeCore.podspec", "CHANGELOG.md", "Package.swift", "Package@swift-5.9.swift", "Package@swift-6.2.swift", "docs/Carthage/AmplitudeCore.json"],
+        "assets": ["AmplitudeCore.podspec", "CHANGELOG.md", "Package.swift", "Package@swift-5.9.swift", "Package@swift-6.2.swift", "docs/Carthage/AmplitudeCore.json", "Sources/AmplitudeCore/Constants.swift"],
         "message": "chore(release): ${nextRelease.version} [skip ci]\n\n${nextRelease.notes}"
       }],
        ["@semantic-release/exec", {

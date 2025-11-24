@@ -60,7 +60,7 @@ actor DiagnosticsStorage {
     }
 
     var didChanged: Bool {
-        !(counters.isEmpty && histograms.isEmpty && tags.isEmpty && unsavedEvents.isEmpty)
+        !(counters.isEmpty && histograms.isEmpty && tags.isEmpty && events.isEmpty)
     }
 
     func setTag(name: String, value: String) {
