@@ -10,17 +10,8 @@ import Foundation
 let US_SERVER_URL = "https://diagnostics.prod.us-west-2.amplitude.com/v1/capture"
 let EU_SERVER_URL = "https://diagnostics.prod.eu-central-1.amplitude.com/v1/capture"
 
-#if DEBUG
-@usableFromInline let DEFAULT_SAMPLE_RATE: Double = 1.0
-#else
 @usableFromInline let DEFAULT_SAMPLE_RATE: Double = 0
-#endif
-
-#if DEBUG
-@usableFromInline let DEFAULT_FLUSH_INTERVAL: UInt64 = 5
-#else
 @usableFromInline let DEFAULT_FLUSH_INTERVAL: UInt64 = 300
-#endif
 
 @_spi(Internal)
 @available(macOS 10.15, iOS 13.0, watchOS 6.0, tvOS 13.0, *)
@@ -89,7 +80,7 @@ public actor DiagnosticsClient: CoreDiagnostics {
                 let enabled = config["enabled"] as? Bool
                 let sampleRate = config["sampleRate"] as? Double
 
-                var enableCrashTracking = false
+                var enableCrashTracking: Bool? = nil
                 if let availabilities = config["availabilities"] as? [String: String],
                    let availableFrom = availabilities["CrashTracking"],
                    let available = try? AmplitudeContext.coreLibraryVersion.isGreaterThanOrEqualToVersion(availableFrom) {
