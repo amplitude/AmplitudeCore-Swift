@@ -46,20 +46,20 @@ module.exports = {
                 {
                   "file": "Package.swift",
                   "hasChanged": true,
-                  "numMatches": 1,
-                  "numReplacements": 1
+                  "numMatches": 2,
+                  "numReplacements": 2
                 },
                 {
                   "file": "Package@swift-5.9.swift",
                   "hasChanged": true,
-                  "numMatches": 1,
-                  "numReplacements": 1
+                  "numMatches": 2,
+                  "numReplacements": 2
                 },
                 {
                   "file": "Package@swift-6.2.swift",
                   "hasChanged": true,
-                  "numMatches": 1,
-                  "numReplacements": 1
+                  "numMatches": 2,
+                  "numReplacements": 2
                 }
               ],
               "countMatches": true
