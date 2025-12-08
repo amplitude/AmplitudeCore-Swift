@@ -48,6 +48,7 @@ public actor RemoteConfigClient: NSObject {
             "sessionReplay.sr_ios_privacy_config",
             "sessionReplay.sr_ios_sampling_config",
             "analyticsSDK.iosSDK",
+            "diagnostics.iosSDK",
         ]
     }
 

@@ -73,6 +73,22 @@ jobs:
           --xc-setting DEFINES_MODULE=1 \
           --zip
 
+      - name: Build Framework No UIKit
+        run: |
+          swift-create-xcframework/.build/release/swift-create-xcframework \
+          AmplitudeCoreNoUIKit \
+          --platform ios \
+          --platform maccatalyst \
+          --platform macos \
+          --platform tvos \
+          --platform watchos \
+          --platform visionos \
+          --skip-binary-targets \
+          --stack-evolution \
+          --xc-setting DEFINES_MODULE=1 \
+          --xc-setting AMPLITUDE_DISABLE_UIKIT=1 \
+          --zip
+
       - name: Validate Podfile
         run: |
           unzip AmplitudeCore.zip && pod lib lint
@@ -80,9 +96,16 @@ jobs:
       - name: Update Checksum
         run: |
           CHECKSUM=$(xcrun swift package compute-checksum AmplitudeCore.zip) && \
-          sed -i '' -E "s/(checksum: \")[^\"]*(\")/\1$CHECKSUM\2/" Package.swift && \
-          sed -i '' -E "s/(checksum: \")[^\"]*(\")/\1$CHECKSUM\2/" Package@swift-5.9.swift && \
-          sed -i '' -E "s/(checksum: \")[^\"]*(\")/\1$CHECKSUM\2/" Package@swift-6.2.swift
+          sed -i '' -E "/AmplitudeCore\.zip/,/checksum:/ s/(checksum: \")[^\"]*(\")/\1$CHECKSUM\2/" Package.swift && \
+          sed -i '' -E "/AmplitudeCore\.zip/,/checksum:/ s/(checksum: \")[^\"]*(\")/\1$CHECKSUM\2/" Package@swift-5.9.swift && \
+          sed -i '' -E "/AmplitudeCore\.zip/,/checksum:/ s/(checksum: \")[^\"]*(\")/\1$CHECKSUM\2/" Package@swift-6.2.swift
+
+      - name: Update Checksum for No UIKit
+        run: |
+          CHECKSUM=$(xcrun swift package compute-checksum AmplitudeCoreNoUIKit.zip) && \
+          sed -i '' -E "/AmplitudeCoreNoUIKit\.zip/,/checksum:/ s/(checksum: \")[^\"]*(\")/\1$CHECKSUM\2/" Package.swift && \
+          sed -i '' -E "/AmplitudeCoreNoUIKit\.zip/,/checksum:/ s/(checksum: \")[^\"]*(\")/\1$CHECKSUM\2/" Package@swift-5.9.swift && \
+          sed -i '' -E "/AmplitudeCoreNoUIKit\.zip/,/checksum:/ s/(checksum: \")[^\"]*(\")/\1$CHECKSUM\2/" Package@swift-6.2.swift
 
       - name: Semantic Release --dry-run
         if: ${{ github.event.inputs.dryRun == 'true'}}

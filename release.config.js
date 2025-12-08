@@ -17,6 +17,7 @@ module.exports = {
       "@semantic-release/github", {
         "assets": [
           { "path": "AmplitudeCore.zip" },
+          { "path": "AmplitudeCoreNoUIKit.zip" },
         ]
       }],
       [
@@ -39,8 +40,8 @@ module.exports = {
             },
             {
               "files": ["Package.swift", "Package@swift-5.9.swift", "Package@swift-6.2.swift"],
-              "from": "https://github.com/amplitude/AmplitudeCore-Swift/releases/download/v.*/AmplitudeCore.zip",
-              "to": "https://github.com/amplitude/AmplitudeCore-Swift/releases/download/v${nextRelease.version}/AmplitudeCore.zip",
+              "from": "https://github.com/amplitude/AmplitudeCore-Swift/releases/download/v.*/AmplitudeCore",
+              "to": "https://github.com/amplitude/AmplitudeCore-Swift/releases/download/v${nextRelease.version}/AmplitudeCore",
               "results": [
                 {
                   "file": "Package.swift",
@@ -63,6 +64,20 @@ module.exports = {
               ],
               "countMatches": true
             },
+            {
+              "files": ["Sources/AmplitudeCore/Constants.swift"],
+              "from": "SDK_VERSION = \".*\"",
+              "to": "SDK_VERSION = \"${nextRelease.version}\"",
+              "results": [
+                {
+                  "file": "Sources/AmplitudeCore/Constants.swift",
+                  "hasChanged": true,
+                  "numMatches": 1,
+                  "numReplacements": 1
+                }
+              ],
+              "countMatches": true
+            },
           ]
         }
       ],
@@ -70,7 +85,7 @@ module.exports = {
         "prepareCmd": "cat docs/Carthage/AmplitudeCore.json | jq --arg RELEASE '${nextRelease.version}' '. + {$RELEASE: \"https://github.com/amplitude/AmplitudeCore-Swift/releases/download/v\\($RELEASE)/AmplitudeCore.zip\"}' > docs/Carthage/AmplitudeCore.json.tmp && mv docs/Carthage/AmplitudeCore.json.tmp docs/Carthage/AmplitudeCore.json"
       }],
       ["@semantic-release/git", {
-        "assets": ["AmplitudeCore.podspec", "CHANGELOG.md", "Package.swift", "Package@swift-5.9.swift", "Package@swift-6.2.swift", "docs/Carthage/AmplitudeCore.json"],
+        "assets": ["AmplitudeCore.podspec", "CHANGELOG.md", "Package.swift", "Package@swift-5.9.swift", "Package@swift-6.2.swift", "docs/Carthage/AmplitudeCore.json", "Sources/AmplitudeCore/Constants.swift"],
         "message": "chore(release): ${nextRelease.version} [skip ci]\n\n${nextRelease.notes}"
       }],
        ["@semantic-release/exec", {
