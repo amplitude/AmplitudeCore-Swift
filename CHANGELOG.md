@@ -1,3 +1,10 @@
+# [1.3.0](https://github.com/amplitude/AmplitudeCore-Swift/compare/v1.2.4...v1.3.0) (2025-12-08)
+
+
+### Features
+
+* add diagnostics client ([#47](https://github.com/amplitude/AmplitudeCore-Swift/issues/47)) ([376ffb4](https://github.com/amplitude/AmplitudeCore-Swift/commit/376ffb4ec858c589f77496b3ce12a309e97441c5))
+
 ## [1.2.4](https://github.com/amplitude/AmplitudeCore-Swift/compare/v1.2.3...v1.2.4) (2025-11-04)
 
 
