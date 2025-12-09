@@ -52,7 +52,7 @@ public actor RemoteConfigClient: NSObject {
         ]
     }
 
-    private class CallbackInfo {
+    private actor CallbackInfo {
         let id: UUID
         let key: String?
         let deliveryMode: DeliveryMode
@@ -68,6 +68,10 @@ public actor RemoteConfigClient: NSObject {
             self.key = key
             self.deliveryMode = deliveryMode
             self.callback = callback
+        }
+
+        func updateLastCallbackTime(_ time: Date) {
+            lastCallbackTime = time
         }
     }
 
@@ -283,7 +287,7 @@ public actor RemoteConfigClient: NSObject {
                         break
                     case .waitForRemote:
                         // Wait until the initial callback from subscribe is fired
-                        guard callback.lastCallbackTime == nil else {
+                        guard await callback.lastCallbackTime == nil else {
                             continue
                         }
                     }
@@ -307,8 +311,8 @@ public actor RemoteConfigClient: NSObject {
         return fetchRemoteTask
     }
 
-    private func sendCallback(_ callbackInfo: CallbackInfo, configInfo: RemoteConfigInfo?, source: Source) {
-        callbackInfo.lastCallbackTime = Date()
+    private func sendCallback(_ callbackInfo: CallbackInfo, configInfo: RemoteConfigInfo?, source: Source) async {
+        await callbackInfo.updateLastCallbackTime(Date())
 
         var filteredConfig: RemoteConfig?
         if let key = callbackInfo.key {
