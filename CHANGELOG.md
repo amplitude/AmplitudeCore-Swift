@@ -1,3 +1,10 @@
+## [1.3.1](https://github.com/amplitude/AmplitudeCore-Swift/compare/v1.3.0...v1.3.1) (2025-12-09)
+
+
+### Bug Fixes
+
+* release NoUIKit Framework ([719841e](https://github.com/amplitude/AmplitudeCore-Swift/commit/719841e0a37809832e7a470345325770c7f680d3))
+
 # [1.3.0](https://github.com/amplitude/AmplitudeCore-Swift/compare/v1.2.4...v1.3.0) (2025-12-08)
 
 
