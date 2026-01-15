@@ -37,7 +37,7 @@ jobs:
         # See https://github.com/swiftlang/swift-package-manager/issues/4651
         # NOTE: if downgrading, you may have to manually delete the actions cache via the github interface
       - name: Set Xcode Version
-        run: sudo xcode-select -switch /Applications/Xcode_16.3.app
+        run: sudo xcode-select -switch /Applications/Xcode_16.4.app
 
       - name: Checkout swift-create-xcframework
         uses: actions/checkout@v4

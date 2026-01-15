@@ -10,34 +10,34 @@ on:
 jobs:
   unit-test:
     name: Unit ${{ matrix.platform }} - Xcode ${{ matrix.xcode }} - OS ${{ matrix.test-destination-os }}
-    runs-on: macos-15
+    runs-on: macos-26
 
     strategy:
       fail-fast: false
       matrix:
         include:
           - platform: iOS
-            xcode: 16.4
-            device: "iPhone 16"
-            test-destination-os: latest
+            xcode: 26.2
+            device: "iPhone 17"
+            test-destination-os: 26.2
 
           - platform: macOS
-            xcode: 16.4
+            xcode: 26.2
             test-destination-os: latest
 
           - platform: tvOS
-            xcode: 16.4
-            test-destination-os: latest
+            xcode: 26.2
+            test-destination-os: 26.2
             device: "Apple TV"
 
           - platform: watchOS
-            xcode: 16.4
-            test-destination-os: latest
-            device: "Apple Watch Series 10 (42mm)"
+            xcode: 26.2
+            test-destination-os: 26.2
+            device: "Apple Watch Series 11 (42mm)"
 
           - platform: visionOS
-            xcode: 16.4
-            test-destination-os: 2.5
+            xcode: 26.2
+            test-destination-os: 26.2
             device: "Apple Vision Pro"
     steps:
       - name: Checkout
