@@ -263,7 +263,6 @@ public actor DiagnosticsClient: CoreDiagnostics {
         let device = await CoreDevice.current
         staticContext["device_manufacturer"] = await device.manufacturer
         staticContext["device_model"] = await device.model
-        staticContext["idfv"] = await device.identifierForVendor
         staticContext["os_name"] = await device.os_name
         staticContext["os_version"] = await device.os_version
         staticContext["platform"] = await device.platform
