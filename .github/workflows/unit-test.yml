@@ -45,6 +45,25 @@ jobs:
       - name: Set Xcode ${{ matrix.xcode }}
         run: |
           sudo xcode-select -switch /Applications/Xcode_${{ matrix.xcode }}.app
+      - name: Install Apple platform SDKs
+        run: |
+          # Warm up CoreSimulator to avoid "Unable to connect to simulator":
+          # https://github.com/actions/runner-images/issues/12862#issuecomment-3239326872
+          xcrun simctl list > /dev/null
+          case "${{ matrix.platform }}" in
+            iOS)
+              sudo xcodebuild -downloadPlatform iOS
+              ;;
+            tvOS)
+              sudo xcodebuild -downloadPlatform tvOS
+              ;;
+            watchOS)
+              sudo xcodebuild -downloadPlatform watchOS
+              ;;
+            visionOS)
+              sudo xcodebuild -downloadPlatform visionOS
+              ;;
+          esac
       - name: ${{ matrix.platform }} Tests
         run: |
           case "${{ matrix.platform }}" in
