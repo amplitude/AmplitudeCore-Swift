@@ -1,3 +1,10 @@
+## [1.3.2](https://github.com/amplitude/AmplitudeCore-Swift/compare/v1.3.1...v1.3.2) (2026-01-16)
+
+
+### Bug Fixes
+
+* remove an unexpected diagnostics basic tag ([#50](https://github.com/amplitude/AmplitudeCore-Swift/issues/50)) ([81d006d](https://github.com/amplitude/AmplitudeCore-Swift/commit/81d006d7b51ac7f955abd00c4be266b7bf3288b0))
+
 ## [1.3.1](https://github.com/amplitude/AmplitudeCore-Swift/compare/v1.3.0...v1.3.1) (2025-12-09)
 
 
