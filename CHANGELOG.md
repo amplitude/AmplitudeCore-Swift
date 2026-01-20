@@ -1,3 +1,10 @@
+## [1.3.3](https://github.com/amplitude/AmplitudeCore-Swift/compare/v1.3.2...v1.3.3) (2026-01-20)
+
+
+### Bug Fixes
+
+* add fnv1a64String helper func ([#53](https://github.com/amplitude/AmplitudeCore-Swift/issues/53)) ([13ee92e](https://github.com/amplitude/AmplitudeCore-Swift/commit/13ee92ebcfb74c30cfd0e950e16b1fe088c8cebb))
+
 ## [1.3.2](https://github.com/amplitude/AmplitudeCore-Swift/compare/v1.3.1...v1.3.2) (2026-01-16)
 
 
