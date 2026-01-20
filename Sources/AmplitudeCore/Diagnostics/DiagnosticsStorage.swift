@@ -40,7 +40,7 @@ actor DiagnosticsStorage {
         self.instanceName = instanceName
         self.logger = logger
         self.sessionStartAt = sessionStartAt
-        self.sanitizedInstance = Self.sanitize(instanceName)
+        self.sanitizedInstance = instanceName.fnv1a64String()
         self.persistIntervalNanoSec = persistIntervalNanoSec
         self.shouldStore = shouldStore
     }
@@ -441,11 +441,6 @@ actor DiagnosticsStorage {
         } else {
             fileHandle.synchronizeFile()
         }
-    }
-
-    private static func sanitize(_ value: String) -> String {
-        let hash = Hash.fnv1a64(value)
-        return String(format: "%016llx", hash)
     }
 
     // MARK: - Persistence Timer

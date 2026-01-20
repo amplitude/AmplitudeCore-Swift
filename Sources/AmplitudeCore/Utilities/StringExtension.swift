@@ -80,3 +80,11 @@ public extension String {
     }
 
 }
+
+public extension String {
+
+    func fnv1a64String() -> String {
+        let hash = Hash.fnv1a64(self)
+        return String(format: "%016llx", hash)
+    }
+}
