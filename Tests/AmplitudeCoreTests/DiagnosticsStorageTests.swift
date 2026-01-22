@@ -218,6 +218,99 @@ final class DiagnosticsStorageTests: XCTestCase {
         XCTAssertEqual(events.count, 10)
     }
 
+    func testDiagnosticsPayloadJsonFormat() async throws {
+        // Set up complete diagnostics data
+        await storage.setTag(name: "sdk_version", value: "1.0.0")
+        await storage.setTag(name: "platform", value: "iOS")
+        await storage.increment(name: "events_tracked", size: 100)
+        await storage.increment(name: "api_calls", size: 50)
+        await storage.recordHistogram(name: "request_latency", value: 150.0)
+        await storage.recordHistogram(name: "request_latency", value: 200.0)
+        await storage.recordEvent(name: "test_event", properties: ["key1": "value1", "key2": 42])
+        await storage.recordEvent(name: "another_event", properties: nil)
+
+        // Dump the snapshot to get a DiagnosticsSnapshot
+        let snapshot = await storage.dumpAndClearCurrentSession()
+
+        // Convert to DiagnosticsPayload (similar to how DiagnosticsClient does it)
+        let histogramResults = snapshot.histograms.mapValues { stats in
+            HistogramResult(
+                count: stats.count,
+                min: stats.min,
+                max: stats.max,
+                avg: stats.count > 0 ? stats.sum / Double(stats.count) : 0
+            )
+        }
+        let payload = DiagnosticsPayload(
+            tags: snapshot.tags,
+            counters: snapshot.counters,
+            histogram: histogramResults,
+            events: snapshot.events
+        )
+
+        // Encode the payload to JSON
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = .sortedKeys
+        let jsonData = try encoder.encode(payload)
+        let jsonString = String(data: jsonData, encoding: .utf8)!
+
+        // Verify top-level payload keys
+        XCTAssertTrue(jsonString.contains("\"tags\""), "JSON should contain 'tags' key")
+        XCTAssertTrue(jsonString.contains("\"counters\""), "JSON should contain 'counters' key")
+        XCTAssertTrue(jsonString.contains("\"histogram\""), "JSON should contain 'histogram' key")
+        XCTAssertTrue(jsonString.contains("\"events\""), "JSON should contain 'events' key")
+
+        // Verify tags content
+        XCTAssertTrue(jsonString.contains("\"sdk_version\""), "JSON should contain 'sdk_version' tag key")
+        XCTAssertTrue(jsonString.contains("\"platform\""), "JSON should contain 'platform' tag key")
+
+        // Verify counters content
+        XCTAssertTrue(jsonString.contains("\"events_tracked\""), "JSON should contain 'events_tracked' counter key")
+        XCTAssertTrue(jsonString.contains("\"api_calls\""), "JSON should contain 'api_calls' counter key")
+
+        // Verify histogram keys
+        XCTAssertTrue(jsonString.contains("\"request_latency\""), "JSON should contain 'request_latency' histogram key")
+        XCTAssertTrue(jsonString.contains("\"count\""), "JSON should contain 'count' in histogram")
+        XCTAssertTrue(jsonString.contains("\"min\""), "JSON should contain 'min' in histogram")
+        XCTAssertTrue(jsonString.contains("\"max\""), "JSON should contain 'max' in histogram")
+        XCTAssertTrue(jsonString.contains("\"avg\""), "JSON should contain 'avg' in histogram")
+
+        // Verify DiagnosticsEvent
+        XCTAssertTrue(jsonString.contains("\"event_name\""), "JSON should contain 'event_name' key, got: \(jsonString)")
+        XCTAssertTrue(jsonString.contains("\"event_properties\""), "JSON should contain 'event_properties' key, got: \(jsonString)")
+        XCTAssertTrue(jsonString.contains("\"time\""), "JSON should contain 'time' key in events")
+
+        // Verify round-trip decoding works
+        let decoder = JSONDecoder()
+        let decodedPayload = try decoder.decode(DiagnosticsPayload.self, from: jsonData)
+
+        // Verify tags
+        XCTAssertEqual(decodedPayload.tags["sdk_version"], "1.0.0")
+        XCTAssertEqual(decodedPayload.tags["platform"], "iOS")
+
+        // Verify counters
+        XCTAssertEqual(decodedPayload.counters["events_tracked"], 100)
+        XCTAssertEqual(decodedPayload.counters["api_calls"], 50)
+
+        // Verify histograms
+        XCTAssertNotNil(decodedPayload.histogram["request_latency"])
+        XCTAssertEqual(decodedPayload.histogram["request_latency"]?.count, 2)
+        XCTAssertEqual(decodedPayload.histogram["request_latency"]?.min, 150.0)
+        XCTAssertEqual(decodedPayload.histogram["request_latency"]?.max, 200.0)
+
+        // Verify events
+        XCTAssertEqual(decodedPayload.events.count, 2)
+        let testEvent = decodedPayload.events.first { $0.eventName == "test_event" }
+        XCTAssertNotNil(testEvent)
+        XCTAssertEqual(testEvent?.eventProperties?["key1"] as? String, "value1")
+        XCTAssertEqual(testEvent?.eventProperties?["key2"] as? Int, 42)
+
+        // Verify event with null event_properties
+        let anotherEvent = decodedPayload.events.first { $0.eventName == "another_event" }
+        XCTAssertNotNil(anotherEvent)
+        XCTAssertNil(anotherEvent?.eventProperties, "Event with nil properties should decode to nil eventProperties")
+    }
+
     // MARK: - Dump and Clear Tests
 
     func testDumpAndClear() async throws {

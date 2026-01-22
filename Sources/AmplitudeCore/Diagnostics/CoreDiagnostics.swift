@@ -63,9 +63,9 @@ struct DiagnosticsEvent: Codable, Sendable {
     let eventProperties: [String: any Sendable]?
 
     enum CodingKeys: String, CodingKey {
-        case eventName
+        case eventName = "event_name"
         case time
-        case eventProperties
+        case eventProperties = "event_properties"
     }
 
     init(eventName: String, time: TimeInterval, eventProperties: [String: any Sendable]?) {
@@ -78,8 +78,11 @@ struct DiagnosticsEvent: Codable, Sendable {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         eventName = try container.decode(String.self, forKey: .eventName)
         time = try container.decode(TimeInterval.self, forKey: .time)
-        let jsonValueDict = try container.decode([String: JSONValue].self, forKey: .eventProperties)
-        eventProperties = jsonValueDict.mapValues { $0.toAny() }
+        if let jsonValueDict = try container.decodeIfPresent([String: JSONValue].self, forKey: .eventProperties) {
+            eventProperties = jsonValueDict.mapValues { $0.toAny() }
+        } else {
+            eventProperties = nil
+        }
     }
 
     func encode(to encoder: Encoder) throws {
@@ -130,10 +133,4 @@ struct DiagnosticsPayload: Codable {
     let counters: [String: Int]
     let histogram: [String: HistogramResult]
     let events: [DiagnosticsEvent]
-}
-
-@available(macOS 10.15, iOS 13.0, watchOS 6.0, tvOS 13.0, *)
-protocol StorageOutputStream: Sendable {
-    func write(_ data: Data) throws
-    func close() throws
 }
