@@ -273,7 +273,13 @@ public actor DiagnosticsClient: CoreDiagnostics {
     }
 
     private func setupCrashCatch() async {
-        guard enabled, enableCrashTracking, !didRegisterCrashTracking else { return }
+        // We intentionally use `sampleRate > 0` instead of `shouldTrack` here.
+        // Crashes are captured during one session but can only be reported in the next session.
+        // Using `shouldTrack` would require both consecutive sessions to be sampled in,
+        // significantly reducing crash coverage (e.g., 1% with a 0.1 sample rate).
+        // By checking `sampleRate > 0`, we capture crashes whenever the feature is enabled,
+        // and reporting depends only on the next session being sampled in (~10% with 0.1 rate).
+        guard enabled, sampleRate > 0, enableCrashTracking, !didRegisterCrashTracking else { return }
         didRegisterCrashTracking = true
 
         CrashCatcher.register()
