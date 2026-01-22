@@ -293,7 +293,7 @@ final class DiagnosticsClientTests: XCTestCase {
             if let data = self.extractBodyData(from: request),
                let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
                let events = json["events"] as? [[String: Any]],
-               events.contains(where: { $0["eventName"] as? String == "app_launch" }) {
+               events.contains(where: { $0["event_name"] as? String == "app_launch" }) {
                 capturedRequest = request
                 payloadExpectation.fulfill()
             }
@@ -316,11 +316,11 @@ final class DiagnosticsClientTests: XCTestCase {
         }
 
         XCTAssertEqual(events.count, 3)
-        XCTAssertEqual(events[0]["eventName"] as? String, "app_launch")
-        XCTAssertEqual((events[0]["eventProperties"] as? [String: String])?["source"], "test")
-        XCTAssertEqual(events[1]["eventName"] as? String, "button_click")
-        XCTAssertEqual((events[1]["eventProperties"] as? [String: String])?["button_id"], "submit")
-        XCTAssertEqual(events[2]["eventName"] as? String, "simple_event")
+        XCTAssertEqual(events[0]["event_name"] as? String, "app_launch")
+        XCTAssertEqual((events[0]["event_properties"] as? [String: String])?["source"], "test")
+        XCTAssertEqual(events[1]["event_name"] as? String, "button_click")
+        XCTAssertEqual((events[1]["event_properties"] as? [String: String])?["button_id"], "submit")
+        XCTAssertEqual(events[2]["event_name"] as? String, "simple_event")
     }
 
     // MARK: - Flush Tests
@@ -386,7 +386,7 @@ final class DiagnosticsClientTests: XCTestCase {
         // Verify events
         let events = json["events"] as? [[String: Any]]
         XCTAssertEqual(events?.count, 1)
-        XCTAssertEqual(events?.first?["eventName"] as? String, "app_launch")
+        XCTAssertEqual(events?.first?["event_name"] as? String, "app_launch")
     }
 
     func testFlushWithNetworkError() async throws {
@@ -771,7 +771,7 @@ final class DiagnosticsClientTests: XCTestCase {
 
         let events = json["events"] as? [[String: Any]]
         XCTAssertEqual(events?.count, 1)
-        XCTAssertEqual(events?.first?["eventName"] as? String, "session_start")
+        XCTAssertEqual(events?.first?["event_name"] as? String, "session_start")
 
         // Clean up
         await newSession.stopFlushTimer()
