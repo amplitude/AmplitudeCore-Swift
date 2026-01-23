@@ -1,3 +1,11 @@
+## [1.3.4](https://github.com/amplitude/AmplitudeCore-Swift/compare/v1.3.3...v1.3.4) (2026-01-23)
+
+
+### Bug Fixes
+
+* diagnostics event encoding ([#55](https://github.com/amplitude/AmplitudeCore-Swift/issues/55)) ([28cf1f5](https://github.com/amplitude/AmplitudeCore-Swift/commit/28cf1f540f3afe2d4944ae9536081fb29a415899))
+* initialization conditions for crash tracking ([#56](https://github.com/amplitude/AmplitudeCore-Swift/issues/56)) ([55e8c2e](https://github.com/amplitude/AmplitudeCore-Swift/commit/55e8c2ef54e897ebfcba2fcb82e9209128ef3f04))
+
 ## [1.3.3](https://github.com/amplitude/AmplitudeCore-Swift/compare/v1.3.2...v1.3.3) (2026-01-20)
 
 
