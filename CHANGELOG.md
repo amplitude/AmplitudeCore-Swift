@@ -1,3 +1,10 @@
+# [1.4.0](https://github.com/amplitude/AmplitudeCore-Swift/compare/v1.3.4...v1.4.0) (2026-01-27)
+
+
+### Features
+
+* rename LogLevel -> AMPCoreLogLevel for ObjC ([#54](https://github.com/amplitude/AmplitudeCore-Swift/issues/54)) ([51fec1b](https://github.com/amplitude/AmplitudeCore-Swift/commit/51fec1bc078c3f556a753f14bd08330e58398580))
+
 ## [1.3.4](https://github.com/amplitude/AmplitudeCore-Swift/compare/v1.3.3...v1.3.4) (2026-01-23)
 
 
