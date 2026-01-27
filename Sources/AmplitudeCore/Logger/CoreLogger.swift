@@ -7,7 +7,7 @@
 
 import Foundation
 
-@objc
+@objc(AMPCoreLogLevel)
 public enum LogLevel: Int, Comparable, Sendable {
 
     case off = 0
@@ -36,7 +36,7 @@ public enum LogLevel: Int, Comparable, Sendable {
     }
 }
 
-@objc
+@objc(AMPCoreLogger)
 @preconcurrency
 public protocol CoreLogger: AnyObject, Sendable {
     func error(message: String)
