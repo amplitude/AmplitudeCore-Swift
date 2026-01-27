@@ -211,16 +211,16 @@ final class RemoteConfigTests: XCTestCase {
 
     @available(macOS 10.15, iOS 13.0, watchOS 6.0, tvOS 13.0, *)
     func testResponseContainsNull() async throws {
-        let remoteConfig: RemoteConfigClient.RemoteConfig = [
+        let remoteConfig: [String: Sendable] = [
             "remote": [
                 "test1": NSNull(),
-                "test2": [1, 2, NSNull()],
+                "test2": [1, 2, NSNull()] as [Sendable],
                 "test3": [
                     "a": NSNull(),
-                    "b": [NSNull(), 1, 2, "c"]
-                ],
+                    "b": [NSNull(), 1, 2, "c"] as [Sendable]
+                ] as [String: Sendable],
                 "test4": true,
-            ]
+            ] as [String: Sendable]
         ]
         TestRemoteConfigHandler.responseHandler = TestRemoteConfigHandler.successResponseHandler(remoteConfig)
 
@@ -228,10 +228,10 @@ final class RemoteConfigTests: XCTestCase {
             "remote": [
                 "test2": [1, 2],
                 "test3": [
-                    "b": [1, 2, "c"],
-                ],
+                    "b": [1, 2, "c"] as [Sendable],
+                ] as [String: Sendable],
                 "test4": true,
-            ]
+            ] as [String: Sendable]
         ]
 
         let storage = RemoteConfigUserDefaultsStorage()
@@ -259,7 +259,7 @@ final class RemoteConfigTests: XCTestCase {
     @available(macOS 10.15, iOS 13.0, watchOS 6.0, tvOS 13.0, *)
     func testValidJsonDataTypes() async throws {
 
-        func verifyRemoteConfig(input: [String: Any], expected: [String: Any]) async throws {
+        func verifyRemoteConfig(input: [String: Sendable], expected: [String: Sendable]) async throws {
             TestRemoteConfigHandler.responseHandler = TestRemoteConfigHandler.successResponseHandler(input)
 
             let storage = RemoteConfigUserDefaultsStorage()
@@ -288,21 +288,21 @@ final class RemoteConfigTests: XCTestCase {
         try await verifyRemoteConfig(input: [:], expected: [:])
 
         // Nested structures
-        let nested: [String: Any] = [
+        let nested: [String: Sendable] = [
             "user": [
                 "id": 123,
                 "name": "Alice",
                 "profile": [
                     "age": 30,
                     "languages": ["Swift", "Objective-C", "Klingon"],
-                ]
-            ],
+                ] as [String: Sendable]
+            ] as [String: Sendable],
             "active": true,
         ]
         try await verifyRemoteConfig(input: nested, expected: nested)
 
         // Mixed numeric types
-        let mixedNumbers: [String: Any] = [
+        let mixedNumbers: [String: Sendable] = [
             "int": 42,
             "double": 3.14159,
             "float": Float(2.71828),
@@ -311,7 +311,7 @@ final class RemoteConfigTests: XCTestCase {
         try await verifyRemoteConfig(input: mixedNumbers, expected: mixedNumbers)
 
         // Weird keys
-        let weirdKeys: [String: Any] = [
+        let weirdKeys: [String: Sendable] = [
             " spaces ": "value",
             "emoji😊": "smile",
             "quotes\"inside": "escaped",
@@ -321,14 +321,14 @@ final class RemoteConfigTests: XCTestCase {
         try await verifyRemoteConfig(input: weirdKeys, expected: weirdKeys)
 
         // Nulls and optionals
-        let nulls: [String: Any] = [
+        let nulls: [String: Sendable] = [
             "present": "data",
             "missing": NSNull(),
         ]
         try await verifyRemoteConfig(input: nulls, expected: ["present": "data"])
 
         // Deep nesting
-        let deepNest: [String: Any] = [
+        let deepNest: [String: Sendable] = [
             "level1": [
                 "level2": [
                     "level3": [
@@ -342,13 +342,13 @@ final class RemoteConfigTests: XCTestCase {
         try await verifyRemoteConfig(input: deepNest, expected: deepNest)
 
         // Mixed arrays
-        let mixedArray: [String: Any] = [
-            "array": [1, "two", ["three": 3], true]
+        let mixedArray: [String: Sendable] = [
+            "array": [1, "two", ["three": 3] as [String: Sendable], true] as [Sendable]
         ]
         try await verifyRemoteConfig(input: mixedArray, expected: mixedArray)
 
         // Unicode stress
-        let unicode: [String: Any] = [
+        let unicode: [String: Sendable] = [
             "japanese": "こんにちは",
             "arabic": "مرحبا",
             "combining": "e\u{0301}", // é as e + accent
@@ -357,7 +357,7 @@ final class RemoteConfigTests: XCTestCase {
         try await verifyRemoteConfig(input: unicode, expected: unicode)
 
         // Special number formats
-        let numbersAsStrings: [String: Any] = [
+        let numbersAsStrings: [String: Sendable] = [
             "hexString": "0x1A",
             "expNotation": 1.2e+10,
             "negativeZero": -0.0,
@@ -495,15 +495,15 @@ final class RemoteConfigInMemoryStorage: RemoteConfigStorage, @unchecked Sendabl
 // MARK: TestRemoteConfigHandler
 // A basic echo response that returns {"config": true} for every requested config
 
-class TestRemoteConfigHandler: URLProtocol {
+class TestRemoteConfigHandler: URLProtocol, @unchecked Sendable {
 
     enum TestRemoteConfigHandlerError: Error {
         case invalidRequest
     }
 
-    typealias ResponseHandler = (URLRequest) -> (URLResponse, Data?)
+    typealias ResponseHandler = @Sendable (URLRequest) -> (URLResponse, Data?)
 
-    static var responseHandler: ResponseHandler? = nil
+    nonisolated(unsafe) static var responseHandler: ResponseHandler? = nil
 
     override class func canInit(with request: URLRequest) -> Bool {
         return true
@@ -526,7 +526,8 @@ class TestRemoteConfigHandler: URLProtocol {
         }
         XCTAssertEqual(baseUrl, "\(RemoteConfigTests.serverUrl)/\(RemoteConfigTests.apiKey)")
 
-        DispatchQueue.global().async { [self] in
+        DispatchQueue.global().async { [weak self] in
+            guard let self = self else { return }
             let (response, data) = responseHandler(request)
 
             client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
