@@ -84,18 +84,21 @@ public class CoreDevice: Sendable {
             #endif
         }
 
-        private func getPlatformString() -> String {
+        private func getPlatformString() -> String? {
             var name: [Int32] = [CTL_HW, HW_MACHINE]
-            var size: Int = 2
-            sysctl(&name, 2, nil, &size, nil, 0)
-            var hw_machine = [CChar](repeating: 0, count: Int(size))
-            sysctl(&name, 2, &hw_machine, &size, nil, 0)
-            let platform = String(cString: hw_machine)
-            return platform
+            var size: Int = 0
+            guard sysctl(&name, 2, nil, &size, nil, 0) == 0, size > 0 else {
+                return nil
+            }
+            var hw_machine = [CChar](repeating: 0, count: size + 1)
+            guard sysctl(&name, 2, &hw_machine, &size, nil, 0) == 0 else {
+                return nil
+            }
+            return String(cString: hw_machine)
         }
 
         private func deviceModel() -> String {
-            let platform = getPlatformString()
+            let platform = getPlatformString() ?? "unknown"
             return getDeviceModel(platform: platform)
         }
     }
@@ -234,18 +237,21 @@ public class CoreDevice: Sendable {
             return "watchOS"
         }
 
-        private func getPlatformString() -> String {
+        private func getPlatformString() -> String? {
             var name: [Int32] = [CTL_HW, HW_MACHINE]
-            var size: Int = 2
-            sysctl(&name, 2, nil, &size, nil, 0)
-            var hw_machine = [CChar](repeating: 0, count: Int(size))
-            sysctl(&name, 2, &hw_machine, &size, nil, 0)
-            let platform = String(cString: hw_machine)
-            return platform
+            var size: Int = 0
+            guard sysctl(&name, 2, nil, &size, nil, 0) == 0, size > 0 else {
+                return nil
+            }
+            var hw_machine = [CChar](repeating: 0, count: size + 1)
+            guard sysctl(&name, 2, &hw_machine, &size, nil, 0) == 0 else {
+                return nil
+            }
+            return String(cString: hw_machine)
         }
 
         private func deviceModel() -> String {
-            let platform = getPlatformString()
+            let platform = getPlatformString() ?? "unknown"
             return getDeviceModel(platform: platform)
         }
     }
