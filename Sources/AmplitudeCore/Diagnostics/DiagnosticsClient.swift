@@ -36,6 +36,7 @@ public actor DiagnosticsClient: CoreDiagnostics {
     private nonisolated(unsafe) var remoteConfigSubscription: Sendable?
 
     private var didSetBasicTags: Bool = false
+    private var didRecordSampledIn: Bool = false
     private var didRegisterCrashTracking: Bool = false
     private var didFlushPreviousSession = false
 
@@ -101,7 +102,6 @@ public actor DiagnosticsClient: CoreDiagnostics {
 
     public func setTags(_ tags: [String: String]) async {
         await storage.setTags(tags)
-        startFlushTimerIfNeeded()
     }
 
     public func increment(name: String, size: Int) async {
@@ -126,7 +126,7 @@ public actor DiagnosticsClient: CoreDiagnostics {
 
     func uploadSnapshot(_ snapshot: DiagnosticsSnapshot) async {
         let histogramResults = snapshot.histograms.mapValues {
-            let avg = $0.count > 0 ? ($0.sum / Double($0.count) * 100).rounded() / 100 : 0.0
+            let avg = $0.count > 0 ? $0.sum / Double($0.count) : 0.0
             return HistogramResult(count: $0.count, min: $0.min, max: $0.max, avg: avg)
         }
         let payload = DiagnosticsPayload(tags: snapshot.tags,
@@ -199,9 +199,10 @@ public actor DiagnosticsClient: CoreDiagnostics {
     func initializeTasksIfNeeded() async {
         async let previous: () = self.flushPreviousSessions()
         async let basicTags: () = self.setupBasicDiagnosticsTags()
+        async let sampledIn: () = self.recordSampledInIfNeeded()
         async let crashCatch: () = self.setupCrashCatch()
 
-        _ = await (previous, basicTags, crashCatch)
+        _ = await (previous, basicTags, sampledIn, crashCatch)
     }
 
     deinit {
@@ -256,13 +257,15 @@ public actor DiagnosticsClient: CoreDiagnostics {
         }
     }
 
+    private func recordSampledInIfNeeded() async {
+        guard shouldTrack, !didRecordSampledIn else { return }
+        didRecordSampledIn = true
+        await increment(name: "sampled.in.and.enabled")
+    }
+
     private func setupBasicDiagnosticsTags() async {
         guard !didSetBasicTags else { return }
         didSetBasicTags = true
-
-        if shouldTrack {
-            await increment(name: "sampled.in.and.enabled")
-        }
 
         var staticContext = [String: String]()
 

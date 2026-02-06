@@ -35,7 +35,7 @@ actor DiagnosticsStorage {
     private static let maxEventCount: Int = 10
 
     private let sanitizedInstance: String
-    private var cachedStorageDirectory: URL?
+    private var storageDirectory: URL?
 
     init(instanceName: String, sessionStartAt: TimeInterval, logger: CoreLogger, shouldStore: Bool, persistIntervalNanoSec: UInt64 = NSEC_PER_SEC) {
         self.instanceName = instanceName
@@ -265,7 +265,7 @@ actor DiagnosticsStorage {
 
         if hasUnsavedTags {
             do {
-                let directory = try storageDirectory()
+                let directory = try createStorageDirectoryIfNeeded()
                 try persist(tags: tags, in: directory)
                 hasUnsavedTags = false
             } catch {
@@ -275,7 +275,7 @@ actor DiagnosticsStorage {
 
         if hasUnsavedCounters {
             do {
-                let directory = try storageDirectory()
+                let directory = try createStorageDirectoryIfNeeded()
                 try persist(counters: counters, in: directory)
                 hasUnsavedCounters = false
             } catch {
@@ -285,7 +285,7 @@ actor DiagnosticsStorage {
 
         if hasUnsavedHistograms {
             do {
-                let directory = try storageDirectory()
+                let directory = try createStorageDirectoryIfNeeded()
                 try persist(histograms: histograms, in: directory)
                 hasUnsavedHistograms = false
             } catch {
@@ -295,7 +295,7 @@ actor DiagnosticsStorage {
 
         if !unsavedEvents.isEmpty {
             do {
-                let directory = try storageDirectory()
+                let directory = try createStorageDirectoryIfNeeded()
                 let logUrl = eventsFileURL(in: directory)
                 try prepareEventsLog(at: logUrl, in: directory)
                 try append(events: unsavedEvents, to: logUrl)
@@ -311,7 +311,7 @@ actor DiagnosticsStorage {
     }
 
     private func removeFiles(includeTags: Bool) throws {
-        guard let directory = cachedStorageDirectory else { return }
+        guard let directory = storageDirectory else { return }
         let fileManager = FileManager.default
 
         // Remove specific files
@@ -349,8 +349,8 @@ actor DiagnosticsStorage {
         }
     }
 
-    private func storageDirectory() throws -> URL {
-        if let cached = cachedStorageDirectory { return cached }
+    private func createStorageDirectoryIfNeeded() throws -> URL {
+        if let storageDirectory { return storageDirectory }
 
         let fileManager = FileManager.default
         let baseDirectory = try fileManager.url(for: .applicationSupportDirectory,
@@ -365,7 +365,7 @@ actor DiagnosticsStorage {
         try fileManager.createDirectory(at: directory,
                                         withIntermediateDirectories: true,
                                         attributes: nil)
-        cachedStorageDirectory = directory
+        storageDirectory = directory
         return directory
     }
 
