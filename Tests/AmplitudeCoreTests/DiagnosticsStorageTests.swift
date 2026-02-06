@@ -231,9 +231,10 @@ final class DiagnosticsStorageTests: XCTestCase {
 
         // Dump the snapshot to get a DiagnosticsSnapshot
         let snapshot = await storage.dumpAndClearCurrentSession()
+        XCTAssertNotNil(snapshot)
 
         // Convert to DiagnosticsPayload (similar to how DiagnosticsClient does it)
-        let histogramResults = snapshot.histograms.mapValues { stats in
+        let histogramResults = snapshot!.histograms.mapValues { stats in
             HistogramResult(
                 count: stats.count,
                 min: stats.min,
@@ -242,10 +243,10 @@ final class DiagnosticsStorageTests: XCTestCase {
             )
         }
         let payload = DiagnosticsPayload(
-            tags: snapshot.tags,
-            counters: snapshot.counters,
+            tags: snapshot!.tags,
+            counters: snapshot!.counters,
             histogram: histogramResults,
-            events: snapshot.events
+            events: snapshot!.events
         )
 
         // Encode the payload to JSON
@@ -322,12 +323,13 @@ final class DiagnosticsStorageTests: XCTestCase {
 
         // Dump and clear
         let snapshot = await storage.dumpAndClearCurrentSession()
+        XCTAssertNotNil(snapshot)
 
         // Verify snapshot contains all data
-        XCTAssertEqual(snapshot.tags["tag1"], "value1")
-        XCTAssertEqual(snapshot.counters["counter1"], 5)
-        XCTAssertEqual(snapshot.histograms["metric1"]?.count, 1)
-        XCTAssertEqual(snapshot.events.count, 1)
+        XCTAssertEqual(snapshot!.tags["tag1"], "value1")
+        XCTAssertEqual(snapshot!.counters["counter1"], 5)
+        XCTAssertEqual(snapshot!.histograms["metric1"]?.count, 1)
+        XCTAssertEqual(snapshot!.events.count, 1)
 
         // Verify counters, histograms, and events are cleared
         let counters = await storage.counters
@@ -347,23 +349,26 @@ final class DiagnosticsStorageTests: XCTestCase {
         // First batch
         await storage.increment(name: "counter1", size: 5)
         let snapshot1 = await storage.dumpAndClearCurrentSession()
-        XCTAssertEqual(snapshot1.counters["counter1"], 5)
+        XCTAssertNotNil(snapshot1)
+        XCTAssertEqual(snapshot1!.counters["counter1"], 5)
 
         // Second batch
         await storage.increment(name: "counter1", size: 10)
         let snapshot2 = await storage.dumpAndClearCurrentSession()
-        XCTAssertEqual(snapshot2.counters["counter1"], 10)
+        XCTAssertNotNil(snapshot2)
+        XCTAssertEqual(snapshot2!.counters["counter1"], 10)
 
         // Verify they're independent
-        XCTAssertNotEqual(snapshot1.counters["counter1"], snapshot2.counters["counter1"])
+        XCTAssertNotEqual(snapshot1!.counters["counter1"], snapshot2!.counters["counter1"])
     }
 
     // MARK: - Persistence Tests
 
     func testPersistAndLoadTags() async throws {
-        // Set tags and persist
+        // Set tags and a counter (tags alone don't produce a snapshot) then persist
         await storage.setTag(name: "persisted_tag_1", value: "value_1")
         await storage.setTags(["persisted_tag_2": "value_2", "persisted_tag_3": "value_3"])
+        await storage.increment(name: "counter_for_snapshot", size: 1)
         await storage.persistIfNeeded()
 
         // Simulate a restart by creating a new storage with a newer timestamp
@@ -516,6 +521,67 @@ final class DiagnosticsStorageTests: XCTestCase {
 
         // Clean up
         try? await newStorage.removeAllStoredFiles()
+    }
+
+    func testLoadPreviousSessionIncludesRotatedEventLogs() async throws {
+        let instanceName = "test-instance-\(UUID().uuidString)"
+        let oldTimestamp: TimeInterval = 1000
+        let newTimestamp: TimeInterval = 2000
+
+        let oldStorage = DiagnosticsStorage(
+            instanceName: instanceName,
+            sessionStartAt: oldTimestamp,
+            logger: logger,
+            shouldStore: true
+        )
+
+        await oldStorage.recordEvent(name: "rotated_event", properties: ["key": "value"])
+        await oldStorage.persistIfNeeded()
+
+        let fileManager = FileManager.default
+        let baseDirectory = try fileManager.url(for: .applicationSupportDirectory,
+                                                in: .userDomainMask,
+                                                appropriateFor: nil,
+                                                create: true)
+
+        let instanceDirectory = baseDirectory
+            .appendingPathComponent("com.amplitude.diagnostics", isDirectory: true)
+            .appendingPathComponent(instanceName.fnv1a64String(), isDirectory: true)
+
+        let oldSessionDirectory = instanceDirectory
+            .appendingPathComponent(String(oldTimestamp), isDirectory: true)
+
+        let eventsLogURL = oldSessionDirectory.appendingPathComponent("events.log", isDirectory: false)
+        let rotatedURL = oldSessionDirectory.appendingPathComponent("events-1111.log", isDirectory: false)
+        try fileManager.moveItem(at: eventsLogURL, to: rotatedURL)
+
+        let currentEvent = DiagnosticsEvent(eventName: "current_event", time: 2222, eventProperties: nil)
+        var encoded = try JSONEncoder().encode(currentEvent)
+        encoded.append(Data([0x0A]))
+        try encoded.write(to: eventsLogURL, options: [.atomic])
+
+        let newStorage = DiagnosticsStorage(
+            instanceName: instanceName,
+            sessionStartAt: newTimestamp,
+            logger: logger,
+            shouldStore: true
+        )
+
+        let snapshots = await newStorage.loadAndClearPreviousSessions()
+        XCTAssertEqual(snapshots.count, 1)
+
+        guard let snapshot = snapshots.first else {
+            XCTFail("No snapshot found")
+            try? fileManager.removeItem(at: instanceDirectory)
+            return
+        }
+
+        let eventNames = snapshot.events.map { $0.eventName }
+        XCTAssertTrue(eventNames.contains("rotated_event"))
+        XCTAssertTrue(eventNames.contains("current_event"))
+
+        // Clean up
+        try? fileManager.removeItem(at: instanceDirectory)
     }
 
     func testPersistAllDataTypes() async throws {
@@ -679,11 +745,7 @@ final class DiagnosticsStorageTests: XCTestCase {
 
     func testEmptySnapshot() async throws {
         let snapshot = await storage.dumpAndClearCurrentSession()
-
-        XCTAssertTrue(snapshot.tags.isEmpty)
-        XCTAssertTrue(snapshot.counters.isEmpty)
-        XCTAssertTrue(snapshot.histograms.isEmpty)
-        XCTAssertTrue(snapshot.events.isEmpty)
+        XCTAssertNil(snapshot)
     }
 
     func testSpecialCharactersInInstanceName() async throws {
@@ -849,8 +911,9 @@ final class DiagnosticsStorageTests: XCTestCase {
         let shouldStore = await storageToEnable.shouldStore
         XCTAssertTrue(shouldStore, "shouldStore should be true after calling setShouldStore(true)")
 
-        // Add more data after enabling
+        // Add data after enabling (include counter since tags alone don't produce a snapshot)
         await storageToEnable.setTag(name: "tag_after", value: "value_after")
+        await storageToEnable.increment(name: "counter_for_snapshot", size: 1)
 
         // Wait for automatic persistence
         try await storageToEnable.waitForPendingPersistenceTask()
@@ -974,4 +1037,3 @@ final class DiagnosticsStorageTests: XCTestCase {
         try? await storageToStart.removeAllStoredFiles()
     }
 }
-

@@ -49,7 +49,6 @@ public actor DiagnosticsClient: CoreDiagnostics {
                 logger: CoreLogger = OSLogger(logLevel: .error),
                 enabled: Bool = true,
                 sampleRate: Double = DEFAULT_SAMPLE_RATE,
-                crashCaptureEnabled: Bool = false,
                 remoteConfigClient: RemoteConfigClient?,
                 flushIntervalNanoSec: UInt64 = DEFAULT_FLUSH_INTERVAL * NSEC_PER_SEC,
                 urlSessionConfiguration: URLSessionConfiguration = .ephemeral) {
@@ -98,7 +97,6 @@ public actor DiagnosticsClient: CoreDiagnostics {
 
     public func setTag(name: String, value: String) async {
         await storage.setTag(name: name, value: value)
-        startFlushTimerIfNeeded()
     }
 
     public func setTags(_ tags: [String: String]) async {
@@ -122,8 +120,7 @@ public actor DiagnosticsClient: CoreDiagnostics {
     }
 
     public func flush() async {
-        guard shouldTrack, await storage.didChanged else { return }
-        let snapshot = await storage.dumpAndClearCurrentSession()
+        guard shouldTrack, let snapshot = await storage.dumpAndClearCurrentSession() else { return }
         await uploadSnapshot(snapshot)
     }
 
@@ -151,6 +148,7 @@ public actor DiagnosticsClient: CoreDiagnostics {
             self.logger.debug(message: "DiagnosticsClient: Encoded payload: \(String(data: bodyData, encoding: .utf8) ?? "Failed to encode payload")")
         } else {
             self.logger.error(message: "DiagnosticsClient: Failed to encode payload")
+            return
         }
 
         request.setValue(self.apiKey, forHTTPHeaderField: "X-ApiKey")
@@ -190,6 +188,11 @@ public actor DiagnosticsClient: CoreDiagnostics {
 
         shouldTrack = self.enabled && Sample.isInSample(seed: String(self.startTimestamp), sampleRate: self.sampleRate)
         await storage.setShouldStore(shouldTrack)
+        if !shouldTrack {
+            stopFlushTimer()
+        } else if await storage.didChanged {
+            startFlushTimerIfNeeded()
+        }
         await self.initializeTasksIfNeeded()
     }
 
@@ -217,9 +220,9 @@ public actor DiagnosticsClient: CoreDiagnostics {
         let flushInterval = self.flushIntervalNanoSec
         flushTask = Task { [weak self] in
             try? await Task.sleep(nanoseconds: flushInterval)
-            guard let self else { return }
-            await self.flush()
+            guard !Task.isCancelled, let self else { return }
             await self.markFlushTimerFinished()
+            await self.flush()
         }
     }
 
@@ -244,8 +247,12 @@ public actor DiagnosticsClient: CoreDiagnostics {
 
         let historicSnapshots = await storage.loadAndClearPreviousSessions()
 
-        for snapshot in historicSnapshots {
-            await uploadSnapshot(snapshot)
+        await withTaskGroup(of: Void.self) { group in
+            for snapshot in historicSnapshots {
+                group.addTask {
+                    await self.uploadSnapshot(snapshot)
+                }
+            }
         }
     }
 
@@ -253,7 +260,9 @@ public actor DiagnosticsClient: CoreDiagnostics {
         guard !didSetBasicTags else { return }
         didSetBasicTags = true
 
-        await increment(name: "sampled.in.and.enabled")
+        if shouldTrack {
+            await increment(name: "sampled.in.and.enabled")
+        }
 
         var staticContext = [String: String]()
 

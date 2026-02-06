@@ -799,6 +799,7 @@ final class DiagnosticsClientTests: XCTestCase {
             urlSessionConfiguration: Self.testSessionConfiguration
         )
 
+        await oldSession.initializationTask?.value
         await oldSession.setTag(name: "multi_session_test", value: "session_1")
         await oldSession.increment(name: "test_counter", size: 10)
         await oldSession.storage.persistIfNeeded()
@@ -847,7 +848,9 @@ final class DiagnosticsClientTests: XCTestCase {
             urlSessionConfiguration: Self.testSessionConfiguration
         )
 
+        await oldSession.initializationTask?.value
         await oldSession.setTag(name: "old_data", value: "should_be_cleared")
+        await oldSession.increment(name: "test_counter", size: 1)
         await oldSession.storage.persistIfNeeded()
         await oldSession.stopFlushTimer()
 
