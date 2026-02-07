@@ -36,6 +36,7 @@ public actor DiagnosticsClient: CoreDiagnostics {
     private nonisolated(unsafe) var remoteConfigSubscription: Sendable?
 
     private var didSetBasicTags: Bool = false
+    private var didRecordSampledIn: Bool = false
     private var didRegisterCrashTracking: Bool = false
     private var didFlushPreviousSession = false
 
@@ -49,7 +50,6 @@ public actor DiagnosticsClient: CoreDiagnostics {
                 logger: CoreLogger = OSLogger(logLevel: .error),
                 enabled: Bool = true,
                 sampleRate: Double = DEFAULT_SAMPLE_RATE,
-                crashCaptureEnabled: Bool = false,
                 remoteConfigClient: RemoteConfigClient?,
                 flushIntervalNanoSec: UInt64 = DEFAULT_FLUSH_INTERVAL * NSEC_PER_SEC,
                 urlSessionConfiguration: URLSessionConfiguration = .ephemeral) {
@@ -98,12 +98,10 @@ public actor DiagnosticsClient: CoreDiagnostics {
 
     public func setTag(name: String, value: String) async {
         await storage.setTag(name: name, value: value)
-        startFlushTimerIfNeeded()
     }
 
     public func setTags(_ tags: [String: String]) async {
         await storage.setTags(tags)
-        startFlushTimerIfNeeded()
     }
 
     public func increment(name: String, size: Int) async {
@@ -122,14 +120,13 @@ public actor DiagnosticsClient: CoreDiagnostics {
     }
 
     public func flush() async {
-        guard shouldTrack, await storage.didChanged else { return }
-        let snapshot = await storage.dumpAndClearCurrentSession()
+        guard shouldTrack, let snapshot = await storage.dumpAndClearCurrentSession() else { return }
         await uploadSnapshot(snapshot)
     }
 
     func uploadSnapshot(_ snapshot: DiagnosticsSnapshot) async {
         let histogramResults = snapshot.histograms.mapValues {
-            let avg = $0.count > 0 ? ($0.sum / Double($0.count) * 100).rounded() / 100 : 0.0
+            let avg = $0.count > 0 ? $0.sum / Double($0.count) : 0.0
             return HistogramResult(count: $0.count, min: $0.min, max: $0.max, avg: avg)
         }
         let payload = DiagnosticsPayload(tags: snapshot.tags,
@@ -151,6 +148,7 @@ public actor DiagnosticsClient: CoreDiagnostics {
             self.logger.debug(message: "DiagnosticsClient: Encoded payload: \(String(data: bodyData, encoding: .utf8) ?? "Failed to encode payload")")
         } else {
             self.logger.error(message: "DiagnosticsClient: Failed to encode payload")
+            return
         }
 
         request.setValue(self.apiKey, forHTTPHeaderField: "X-ApiKey")
@@ -190,15 +188,21 @@ public actor DiagnosticsClient: CoreDiagnostics {
 
         shouldTrack = self.enabled && Sample.isInSample(seed: String(self.startTimestamp), sampleRate: self.sampleRate)
         await storage.setShouldStore(shouldTrack)
+        if !shouldTrack {
+            stopFlushTimer()
+        } else if await storage.didChanged {
+            startFlushTimerIfNeeded()
+        }
         await self.initializeTasksIfNeeded()
     }
 
     func initializeTasksIfNeeded() async {
         async let previous: () = self.flushPreviousSessions()
         async let basicTags: () = self.setupBasicDiagnosticsTags()
+        async let sampledIn: () = self.recordSampledInIfNeeded()
         async let crashCatch: () = self.setupCrashCatch()
 
-        _ = await (previous, basicTags, crashCatch)
+        _ = await (previous, basicTags, sampledIn, crashCatch)
     }
 
     deinit {
@@ -217,9 +221,9 @@ public actor DiagnosticsClient: CoreDiagnostics {
         let flushInterval = self.flushIntervalNanoSec
         flushTask = Task { [weak self] in
             try? await Task.sleep(nanoseconds: flushInterval)
-            guard let self else { return }
-            await self.flush()
+            guard !Task.isCancelled, let self else { return }
             await self.markFlushTimerFinished()
+            await self.flush()
         }
     }
 
@@ -244,16 +248,24 @@ public actor DiagnosticsClient: CoreDiagnostics {
 
         let historicSnapshots = await storage.loadAndClearPreviousSessions()
 
-        for snapshot in historicSnapshots {
-            await uploadSnapshot(snapshot)
+        await withTaskGroup(of: Void.self) { group in
+            for snapshot in historicSnapshots {
+                group.addTask {
+                    await self.uploadSnapshot(snapshot)
+                }
+            }
         }
+    }
+
+    private func recordSampledInIfNeeded() async {
+        guard shouldTrack, !didRecordSampledIn else { return }
+        didRecordSampledIn = true
+        await increment(name: "sampled.in.and.enabled")
     }
 
     private func setupBasicDiagnosticsTags() async {
         guard !didSetBasicTags else { return }
         didSetBasicTags = true
-
-        await increment(name: "sampled.in.and.enabled")
 
         var staticContext = [String: String]()
 

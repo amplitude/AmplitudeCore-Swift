@@ -35,6 +35,7 @@ actor DiagnosticsStorage {
     private static let maxEventCount: Int = 10
 
     private let sanitizedInstance: String
+    private var storageDirectory: URL?
 
     init(instanceName: String, sessionStartAt: TimeInterval, logger: CoreLogger, shouldStore: Bool, persistIntervalNanoSec: UInt64 = NSEC_PER_SEC) {
         self.instanceName = instanceName
@@ -60,7 +61,7 @@ actor DiagnosticsStorage {
     }
 
     var didChanged: Bool {
-        !(counters.isEmpty && histograms.isEmpty && tags.isEmpty && events.isEmpty)
+        !(counters.isEmpty && histograms.isEmpty && events.isEmpty)
     }
 
     func setTag(name: String, value: String) {
@@ -93,7 +94,7 @@ actor DiagnosticsStorage {
     }
 
     func recordEvent(name: String, properties: [String: any Sendable]? = nil) {
-        guard unsavedEvents.count < Self.maxEventCount else {
+        guard events.count < Self.maxEventCount else {
             logger.debug(message: "DiagnosticsStorage: Event limit reached")
             return
         }
@@ -107,7 +108,8 @@ actor DiagnosticsStorage {
 
     /// Dumps all diagnostic data and clears counters, histograms, and events (keeping tags)
     /// - Returns: Tuple containing all current diagnostic data
-    func dumpAndClearCurrentSession() -> DiagnosticsSnapshot {
+    func dumpAndClearCurrentSession() -> DiagnosticsSnapshot? {
+        guard didChanged else { return nil }
         let snapshot = DiagnosticsSnapshot(tags: tags, counters: counters, histograms: histograms, events: events)
 
         // Clear in-memory data (keep tags)
@@ -211,10 +213,13 @@ actor DiagnosticsStorage {
             histograms = loadedHistograms
         }
 
-        // Load events from log file
+        // Load events from log files
         var events: [DiagnosticsEvent] = []
-        let eventsURL = eventsFileURL(in: directory)
-        if let eventsData = try? String(contentsOf: eventsURL, encoding: .utf8) {
+        for url in eventLogFileURLs(in: directory) {
+            guard let eventsData = try? String(contentsOf: url, encoding: .utf8) else {
+                continue
+            }
+
             let lines = eventsData.components(separatedBy: "\n")
             for line in lines {
                 guard !line.isEmpty,
@@ -226,11 +231,31 @@ actor DiagnosticsStorage {
             }
         }
 
-        if !tags.isEmpty || !counters.isEmpty || !histograms.isEmpty || !events.isEmpty {
+        if !counters.isEmpty || !histograms.isEmpty || !events.isEmpty {
             return DiagnosticsSnapshot(tags: tags, counters: counters, histograms: histograms, events: events)
         }
 
         return nil
+    }
+
+    private func eventLogFileURLs(in directory: URL) -> [URL] {
+        let fileManager = FileManager.default
+        let currentEventsURL = eventsFileURL(in: directory)
+
+        let contents = (try? fileManager.contentsOfDirectory(at: directory,
+                                                             includingPropertiesForKeys: nil,
+                                                             options: [.skipsHiddenFiles])) ?? []
+
+        let rotatedLogs = contents.filter { url in
+            let name = url.lastPathComponent
+            return name.hasPrefix("events-") && name.hasSuffix(".log")
+        }
+
+        var ordered: [URL] = rotatedLogs
+        if fileManager.fileExists(atPath: currentEventsURL.path) {
+            ordered.append(currentEventsURL)
+        }
+        return ordered
     }
 
     // MARK: - Persistence
@@ -240,7 +265,7 @@ actor DiagnosticsStorage {
 
         if hasUnsavedTags {
             do {
-                let directory = try storageDirectory()
+                let directory = try createStorageDirectoryIfNeeded()
                 try persist(tags: tags, in: directory)
                 hasUnsavedTags = false
             } catch {
@@ -250,7 +275,7 @@ actor DiagnosticsStorage {
 
         if hasUnsavedCounters {
             do {
-                let directory = try storageDirectory()
+                let directory = try createStorageDirectoryIfNeeded()
                 try persist(counters: counters, in: directory)
                 hasUnsavedCounters = false
             } catch {
@@ -260,7 +285,7 @@ actor DiagnosticsStorage {
 
         if hasUnsavedHistograms {
             do {
-                let directory = try storageDirectory()
+                let directory = try createStorageDirectoryIfNeeded()
                 try persist(histograms: histograms, in: directory)
                 hasUnsavedHistograms = false
             } catch {
@@ -270,7 +295,7 @@ actor DiagnosticsStorage {
 
         if !unsavedEvents.isEmpty {
             do {
-                let directory = try storageDirectory()
+                let directory = try createStorageDirectoryIfNeeded()
                 let logUrl = eventsFileURL(in: directory)
                 try prepareEventsLog(at: logUrl, in: directory)
                 try append(events: unsavedEvents, to: logUrl)
@@ -286,7 +311,7 @@ actor DiagnosticsStorage {
     }
 
     private func removeFiles(includeTags: Bool) throws {
-        let directory = try storageDirectory()
+        guard let directory = storageDirectory else { return }
         let fileManager = FileManager.default
 
         // Remove specific files
@@ -324,21 +349,24 @@ actor DiagnosticsStorage {
         }
     }
 
-    private func storageDirectory() throws -> URL {
+    private func createStorageDirectoryIfNeeded() throws -> URL {
+        if let storageDirectory { return storageDirectory }
+
         let fileManager = FileManager.default
         let baseDirectory = try fileManager.url(for: .applicationSupportDirectory,
                                                 in: .userDomainMask,
                                                 appropriateFor: nil,
                                                 create: true)
-        let storageDirectory = baseDirectory
+        let directory = baseDirectory
             .appendingPathComponent(Self.storagePrefix, isDirectory: true)
             .appendingPathComponent(sanitizedInstance, isDirectory: true)
             .appendingPathComponent(String(sessionStartAt), isDirectory: true)
 
-        try fileManager.createDirectory(at: storageDirectory,
+        try fileManager.createDirectory(at: directory,
                                         withIntermediateDirectories: true,
                                         attributes: nil)
-        return storageDirectory
+        storageDirectory = directory
+        return directory
     }
 
     private func tagsFileURL(in directory: URL) -> URL {
@@ -392,7 +420,7 @@ actor DiagnosticsStorage {
         if let attributes = try? fileManager.attributesOfItem(atPath: url.path),
            let size = attributes[.size] as? NSNumber,
            size.intValue >= Self.maxEventsLogBytes {
-            let timestamp = Int(Date().timeIntervalSince1970)
+            let timestamp = Int(Date().timeIntervalSince1970 * 1000)
             let rotatedName = "events-\(timestamp).log"
             let rotatedURL = directory.appendingPathComponent(rotatedName, isDirectory: false)
             try fileManager.moveItem(at: url, to: rotatedURL)
@@ -402,16 +430,16 @@ actor DiagnosticsStorage {
 
     private func append(events: [DiagnosticsEvent], to url: URL) throws {
         let encoder = JSONEncoder()
-        
+
         var encodedEvents: [Data] = []
         encodedEvents.reserveCapacity(events.count)
-        
+
         for event in events {
             var data = try encoder.encode(event)
             data.append(Self.newlineData)
             encodedEvents.append(data)
         }
-        
+
         let fileHandle = try FileHandle(forWritingTo: url)
         defer {
             if #available(macOS 10.15.4, iOS 13.4, watchOS 6.2, tvOS 13.4, *) {
@@ -451,9 +479,10 @@ actor DiagnosticsStorage {
         let interval = persistIntervalNanoSec
         persistenceTask = Task { [weak self] in
             try? await Task.sleep(nanoseconds: interval)
-            
-            await self?.persistIfNeeded()
+            guard !Task.isCancelled else { return }
+
             await self?.markPersistenceTimerFinished()
+            await self?.persistIfNeeded()
         }
     }
 
