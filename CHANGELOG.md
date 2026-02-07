@@ -1,3 +1,11 @@
+## [1.4.1](https://github.com/amplitude/AmplitudeCore-Swift/compare/v1.4.0...v1.4.1) (2026-02-07)
+
+
+### Bug Fixes
+
+* crash while getting patform string ([#58](https://github.com/amplitude/AmplitudeCore-Swift/issues/58)) ([722cc8d](https://github.com/amplitude/AmplitudeCore-Swift/commit/722cc8d07943cd0c48c3e47b9dd919e8874fb601))
+* diagnostics bugs ([#59](https://github.com/amplitude/AmplitudeCore-Swift/issues/59)) ([86daf83](https://github.com/amplitude/AmplitudeCore-Swift/commit/86daf8360f5d30b713e680e0ea9ac39010acf515))
+
 # [1.4.0](https://github.com/amplitude/AmplitudeCore-Swift/compare/v1.3.4...v1.4.0) (2026-01-27)
 
 

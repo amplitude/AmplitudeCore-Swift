@@ -35,12 +35,12 @@ let package = Package(
             swiftSettings: [.define("AMPLITUDE_DISABLE_UIKIT")]),
         .binaryTarget(
             name: "AmplitudeCoreFramework",
-            url: "https://github.com/amplitude/AmplitudeCore-Swift/releases/download/v1.4.0/AmplitudeCore.zip",
-            checksum: "51eb708e76627a7758430051bc94e55aee33799a59c151e327b22b6b213e15d6"),
+            url: "https://github.com/amplitude/AmplitudeCore-Swift/releases/download/v1.4.1/AmplitudeCore.zip",
+            checksum: "aef2d794a734cd83edd268d82c734c223d110e688efed316b49364a524c7a1bf"),
        .binaryTarget(
            name: "AmplitudeCoreNoUIKitFramework",
-           url: "https://github.com/amplitude/AmplitudeCore-Swift/releases/download/v1.4.0/AmplitudeCoreNoUIKit.zip",
-           checksum: "cc4fbd6aafa274d41a73c91639ca4187cebb98fd11f0619ce7de5901d306a5b1"),
+           url: "https://github.com/amplitude/AmplitudeCore-Swift/releases/download/v1.4.1/AmplitudeCoreNoUIKit.zip",
+           checksum: "6169a116631b38e28509d8551ca66d8e632123ce91ed0822cab2cb946ee96526"),
         .testTarget(
             name: "AmplitudeCoreTests",
             dependencies: ["AmplitudeCore"])
