@@ -50,6 +50,7 @@ public actor DiagnosticsClient: CoreDiagnostics {
                 logger: CoreLogger = OSLogger(logLevel: .error),
                 enabled: Bool = true,
                 sampleRate: Double = DEFAULT_SAMPLE_RATE,
+                crashCaptureEnabled: Bool = false, // unused, but removal is a breaking change.
                 remoteConfigClient: RemoteConfigClient?,
                 flushIntervalNanoSec: UInt64 = DEFAULT_FLUSH_INTERVAL * NSEC_PER_SEC,
                 urlSessionConfiguration: URLSessionConfiguration = .ephemeral) {
