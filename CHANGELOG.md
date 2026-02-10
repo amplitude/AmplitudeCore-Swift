@@ -1,3 +1,10 @@
+## [1.4.2](https://github.com/amplitude/AmplitudeCore-Swift/compare/v1.4.1...v1.4.2) (2026-02-10)
+
+
+### Bug Fixes
+
+* restore deleted parameter to maintain api stability ([#60](https://github.com/amplitude/AmplitudeCore-Swift/issues/60)) ([8356c04](https://github.com/amplitude/AmplitudeCore-Swift/commit/8356c04fd3a82fc54187e4cb376d4a1568b87ef8))
+
 ## [1.4.1](https://github.com/amplitude/AmplitudeCore-Swift/compare/v1.4.0...v1.4.1) (2026-02-07)
 
 
