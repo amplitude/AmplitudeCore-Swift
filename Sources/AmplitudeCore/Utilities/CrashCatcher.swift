@@ -102,16 +102,22 @@ class CrashCatcher {
 
         guard isRegistered else { return }
 
+        #if !os(watchOS)
         for (signal, var action) in previousSignalHandlers {
             sigaction(signal, &action, nil)
         }
         previousSignalHandlers.removeAll()
+        #endif
         isRegistered = false
     }
 
     // MARK: - Signal Handlers
 
     private static func registerSignalHandlers() {
+        #if os(watchOS)
+        // watchOS restricts sigaction() — it silently fails on older versions and
+        // traps (EXC_BREAKPOINT) on watchOS 26.3+. Skip registration entirely.
+        #else
         for signal in fatalSignals {
             var action = sigaction()
             var oldAction = sigaction()
@@ -124,6 +130,7 @@ class CrashCatcher {
             sigemptyset(&action.sa_mask)
             sigaction(signal, &action, nil)
         }
+        #endif
     }
 
     private static let handleSignal: @convention(c) (Int32, UnsafeMutablePointer<__siginfo>?, UnsafeMutableRawPointer?) -> Void = { sig, info, context in
