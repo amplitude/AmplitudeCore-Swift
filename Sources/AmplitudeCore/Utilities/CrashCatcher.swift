@@ -33,24 +33,25 @@ class CrashCatcher {
     private static let crashReportFileName = "com.amplitude.crash_report"
     private static let storagePrefix: String = "com.amplitude.crash_report"
 
-    private static var storageDirectory: URL? {
-        let fileManager = FileManager.default
-        guard let baseDirectory = try? fileManager.url(for: .applicationSupportDirectory,
-                                                       in: .userDomainMask,
-                                                       appropriateFor: nil,
-                                                       create: true) else {
+    private static let storageDirectory: URL? = {
+        guard let baseDirectory = try? FileManager.default.url(for: .applicationSupportDirectory,
+                                                               in: .userDomainMask,
+                                                               appropriateFor: nil,
+                                                               create: false) else {
             return nil
         }
-        let storageDirectory = baseDirectory.appendingPathComponent(Self.storagePrefix,
-                                                                    isDirectory: true)
-        try? fileManager.createDirectory(at: storageDirectory,
-                                         withIntermediateDirectories: true,
-                                         attributes: nil)
-        return storageDirectory
+        return baseDirectory.appendingPathComponent(storagePrefix, isDirectory: true)
+    }()
+
+    private static func createStorageDirectoryIfNeeded() {
+        guard let storageDirectory else { return }
+        try? FileManager.default.createDirectory(at: storageDirectory,
+                                                 withIntermediateDirectories: true,
+                                                 attributes: nil)
     }
 
     private static var crashReportPath: URL? {
-        return storageDirectory?.appendingPathComponent(crashReportFileName)
+        storageDirectory?.appendingPathComponent(crashReportFileName)
     }
 
     /// Checks if there was a crash in the previous session
@@ -76,17 +77,16 @@ class CrashCatcher {
         try? FileManager.default.removeItem(at: crashReportPath)
     }
 
-    static func getCrashReportPath() -> String? {
-        return crashReportPath?.path
-    }
-
     /// Registers signal handlers. Thread-safe. Call once at app launch.
+    /// No-op on watchOS where sigaction() is restricted.
     static func register() {
+#if !os(watchOS)
         registrationLock.lock()
         defer { registrationLock.unlock() }
 
         guard !isRegistered else { return }
 
+        createStorageDirectoryIfNeeded()
         if let path = crashReportPath?.path {
             crashFilePathBuffer = Array(path.utf8CString)
             crashFilePathLength = crashFilePathBuffer.count - 1
@@ -94,30 +94,28 @@ class CrashCatcher {
 
         registerSignalHandlers()
         isRegistered = true
+#endif
     }
 
+    /// No-op on watchOS where sigaction() is restricted.
     static func unregister() {
+#if !os(watchOS)
         registrationLock.lock()
         defer { registrationLock.unlock() }
 
         guard isRegistered else { return }
 
-        #if !os(watchOS)
         for (signal, var action) in previousSignalHandlers {
             sigaction(signal, &action, nil)
         }
         previousSignalHandlers.removeAll()
-        #endif
         isRegistered = false
+#endif
     }
 
     // MARK: - Signal Handlers
 
     private static func registerSignalHandlers() {
-        #if os(watchOS)
-        // watchOS restricts sigaction() — it silently fails on older versions and
-        // traps (EXC_BREAKPOINT) on watchOS 26.3+. Skip registration entirely.
-        #else
         for signal in fatalSignals {
             var action = sigaction()
             var oldAction = sigaction()
@@ -130,7 +128,6 @@ class CrashCatcher {
             sigemptyset(&action.sa_mask)
             sigaction(signal, &action, nil)
         }
-        #endif
     }
 
     private static let handleSignal: @convention(c) (Int32, UnsafeMutablePointer<__siginfo>?, UnsafeMutableRawPointer?) -> Void = { sig, info, context in
