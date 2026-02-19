@@ -1,3 +1,10 @@
+## [1.4.3](https://github.com/amplitude/AmplitudeCore-Swift/compare/v1.4.2...v1.4.3) (2026-02-19)
+
+
+### Bug Fixes
+
+* remove watchOS support from diagnostics crash tracking ([#62](https://github.com/amplitude/AmplitudeCore-Swift/issues/62)) ([9d99f1f](https://github.com/amplitude/AmplitudeCore-Swift/commit/9d99f1f8f891b4f697de1581b2b8115e8767c097))
+
 ## [1.4.2](https://github.com/amplitude/AmplitudeCore-Swift/compare/v1.4.1...v1.4.2) (2026-02-10)
 
 
