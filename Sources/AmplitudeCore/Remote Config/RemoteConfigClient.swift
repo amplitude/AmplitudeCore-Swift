@@ -273,6 +273,11 @@ public actor RemoteConfigClient: NSObject {
                     self?.logger.debug(message: "[RemoteConfigClient] Skipping updateConfigs: Too recent")
                     return
                 }
+            case .failure(let error as RemoteConfigError):
+                guard error != .invalidApiKey else {
+                    self?.logger.debug(message: "[RemoteConfigClient] Skipping updateConfigs: Invalid API key")
+                    return
+                }
             case .failure:
                 break
             }
@@ -345,7 +350,27 @@ public actor RemoteConfigClient: NSObject {
            let json = Self.normalizeJSON(json: rawJson) as? [String: Sendable],
            let config = json["configs"] as? [String: Sendable] {
             return RemoteConfigInfo(config: config, lastFetch: Date())
-        } else if retries > 0 {
+        }
+
+        let shouldRetry: Bool
+        if let httpResponse = response as? HTTPURLResponse {
+            switch httpResponse.statusCode {
+            case 401:
+                throw RemoteConfigError.invalidApiKey
+            case 429: // Rate-Limited
+                shouldRetry = retries > 0
+            case 400..<500:
+                throw RemoteConfigError.badResponse
+            case 500...599:
+                shouldRetry = retries > 0
+            default:
+                shouldRetry = retries > 0
+            }
+        } else {
+            shouldRetry = retries > 0
+        }
+
+        if shouldRetry {
             let delay = maxRetryDelay / exp2(TimeInterval(retries)) * .random(in: 0.4..<1)
             let delayNs = delay * TimeInterval(NSEC_PER_SEC)
             try await Task.sleep(nanoseconds: UInt64(delayNs))
