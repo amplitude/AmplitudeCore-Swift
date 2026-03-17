@@ -189,6 +189,46 @@ final class RemoteConfigTests: XCTestCase {
     }
 
     @available(macOS 10.15, iOS 13.0, watchOS 6.0, tvOS 13.0, *)
+    func testForbiddenDisablesFutureRetries() async throws {
+        let didSendRemoteRequestExpectation = XCTestExpectation(description: "it did request config once")
+        didSendRemoteRequestExpectation.assertForOverFulfill = true
+
+        let didRetryExpectation = XCTestExpectation(description: "it did not retry config request")
+        didRetryExpectation.isInverted = true
+
+        var requestCount = 0
+        TestRemoteConfigHandler.responseHandler = { request in
+            requestCount += 1
+            if requestCount == 1 {
+                didSendRemoteRequestExpectation.fulfill()
+            } else {
+                didRetryExpectation.fulfill()
+            }
+            return TestRemoteConfigHandler.errorResponseHandler(statusCode: 403)(request)
+        }
+
+        let storage = RemoteConfigInMemoryStorage()
+        try await storage.setConfig(nil)
+
+        let remoteConfigClient = makeRemoteConfigClient(storage: storage)
+
+        let didUpdateConfigExpectation = XCTestExpectation(description: "it completes without config")
+        remoteConfigClient.subscribe { config, source, lastFetch in
+            XCTAssertNil(config)
+            XCTAssertEqual(source, .remote)
+            XCTAssertNil(lastFetch)
+            didUpdateConfigExpectation.fulfill()
+        }
+
+        await fulfillment(of: [didUpdateConfigExpectation, didSendRemoteRequestExpectation], timeout: 3)
+
+        remoteConfigClient.updateConfigs()
+
+        await fulfillment(of: [didRetryExpectation], timeout: 0.3)
+        XCTAssertEqual(requestCount, 1)
+    }
+
+    @available(macOS 10.15, iOS 13.0, watchOS 6.0, tvOS 13.0, *)
     func testRateLimitRetriesAndRecovers() async throws {
         let remoteConfig: RemoteConfigClient.RemoteConfig = ["remote": 1]
 

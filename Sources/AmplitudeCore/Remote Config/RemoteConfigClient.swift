@@ -355,7 +355,7 @@ public actor RemoteConfigClient: NSObject {
         let shouldRetry: Bool
         if let httpResponse = response as? HTTPURLResponse {
             switch httpResponse.statusCode {
-            case 401:
+            case 401, 403:
                 throw RemoteConfigError.invalidApiKey
             case 429: // Rate-Limited
                 shouldRetry = retries > 0
