@@ -25,6 +25,7 @@ final class DiagnosticsClientTests: XCTestCase {
 
     override func setUp() async throws {
         TestDiagnosticsHandler.reset()
+        CrashCatcher.reset()
         testInstanceName = "test-diagnostics-instance-\(UUID().uuidString)"
     }
 
@@ -969,12 +970,129 @@ final class DiagnosticsClientTests: XCTestCase {
         XCTAssertTrue(isRunning)
     }
 
+    // MARK: - Crash Tracking Tests
+
+    func testConsumePreviousCrash_onlyFirstCallerGetsData() async throws {
+        let crashContent = "Fatal Signal: SIGSEGV (11)"
+        CrashCatcher.writeFakeCrashReport(crashContent)
+
+        let first = CrashCatcher.consumePreviousCrash()
+        let second = CrashCatcher.consumePreviousCrash()
+
+        XCTAssertEqual(first, crashContent)
+        XCTAssertNil(second, "Second caller should get nil — crash report already consumed")
+        XCTAssertTrue(CrashCatcher.didLastRunCrash)
+    }
+
+    func testDidLastRunCrash_clearsCrashMarkerButPreservesSingleConsume() async throws {
+        let crashContent = "Fatal Signal: SIGSEGV (11)"
+        CrashCatcher.writeFakeCrashReport(crashContent)
+
+        XCTAssertTrue(CrashCatcher.didLastRunCrash)
+        if let path = CrashCatcher.crashReportPath {
+            XCTAssertFalse(FileManager.default.fileExists(atPath: path.path))
+        }
+
+        let first = CrashCatcher.consumePreviousCrash()
+        let second = CrashCatcher.consumePreviousCrash()
+
+        XCTAssertEqual(first, crashContent)
+        XCTAssertNil(second, "Crash report should only be consumed once after materializing the crash state")
+    }
+
+    func testDidLastRunCrash_noCrashFile_returnsFalse() async throws {
+        let client = makeDiagnosticsClient()
+        await client.initializationTask?.value
+        await client.updateConfig(enableCrashTracking: true)
+
+        let crashed = await client.didLastRunCrash
+        XCTAssertFalse(crashed)
+    }
+
+    func testDidLastRunCrash_withCrashFileBeforeCrashTrackingEnabled_returnsTrue() async throws {
+        CrashCatcher.writeFakeCrashReport("Fatal Signal: SIGSEGV (11)")
+
+        let client = makeDiagnosticsClient()
+        await client.initializationTask?.value
+
+        let crashed = await client.didLastRunCrash
+        XCTAssertTrue(crashed)
+    }
+
+    func testDidLastRunCrash_withCrashFile_returnsTrue() async throws {
+        CrashCatcher.writeFakeCrashReport("Fatal Signal: SIGSEGV (11)")
+
+        let client = makeDiagnosticsClient()
+        await client.initializationTask?.value
+        await client.updateConfig(enableCrashTracking: true)
+
+        let crashed = await client.didLastRunCrash
+        XCTAssertTrue(crashed)
+    }
+
+    func testCrashEvent_reportedAfterDidLastRunCrashReadBeforeCrashTrackingEnabled() async throws {
+        CrashCatcher.writeFakeCrashReport("Fatal Signal: SIGSEGV (11)")
+
+        let client = makeDiagnosticsClient()
+        await client.initializationTask?.value
+
+        let crashed = await client.didLastRunCrash
+        XCTAssertTrue(crashed)
+
+        await client.updateConfig(enableCrashTracking: true)
+
+        let crashCounter = await client.storage.counters["analytics.crash"] ?? 0
+        let crashEvents = await client.storage.events.filter { $0.eventName == "analytics.crash" }
+        XCTAssertEqual(crashCounter, 1)
+        XCTAssertEqual(crashEvents.count, 1)
+    }
+
+    func testDidLastRunCrash_twoClientsRemainConsistentAcrossInitializationTiming() async throws {
+        CrashCatcher.writeFakeCrashReport("Fatal Signal: SIGABRT (6)")
+
+        let client1 = makeDiagnosticsClient(instanceName: "crash-test-instance-1")
+        await client1.initializationTask?.value
+        let crashedBeforeCrashTracking = await client1.didLastRunCrash
+        XCTAssertTrue(crashedBeforeCrashTracking, "First client should detect the crash before crash tracking is enabled")
+
+        let client2 = makeDiagnosticsClient(instanceName: "crash-test-instance-2")
+        await client2.initializationTask?.value
+        await client2.updateConfig(enableCrashTracking: true)
+
+        let crashed1 = await client1.didLastRunCrash
+        let crashed2 = await client2.didLastRunCrash
+        XCTAssertTrue(crashed1, "First client should see didLastRunCrash = true")
+        XCTAssertTrue(crashed2, "Second client should also see didLastRunCrash = true")
+    }
+
+    func testCrashEvent_onlyReportedOnce_twoClients() async throws {
+        CrashCatcher.writeFakeCrashReport("Fatal Signal: SIGABRT (6)")
+
+        let client1 = makeDiagnosticsClient(instanceName: "crash-report-instance-a")
+        await client1.initializationTask?.value
+        await client1.updateConfig(enableCrashTracking: true)
+
+        let client2 = makeDiagnosticsClient(instanceName: "crash-report-instance-b")
+        await client2.initializationTask?.value
+        await client2.updateConfig(enableCrashTracking: true)
+
+        // Check counters: exactly one client should have recorded the crash
+        let crashCounter1 = await client1.storage.counters["analytics.crash"] ?? 0
+        let crashCounter2 = await client2.storage.counters["analytics.crash"] ?? 0
+        XCTAssertEqual(crashCounter1 + crashCounter2, 1, "Crash counter should be incremented by exactly one client")
+
+        // Check events: exactly one client should have the crash event
+        let crashEvents1 = await client1.storage.events.filter { $0.eventName == "analytics.crash" }
+        let crashEvents2 = await client2.storage.events.filter { $0.eventName == "analytics.crash" }
+        XCTAssertEqual(crashEvents1.count + crashEvents2.count, 1, "Crash event should be recorded by exactly one client")
+    }
+
     // MARK: - Util
 
-    private func makeDiagnosticsClient() -> DiagnosticsClient {
+    private func makeDiagnosticsClient(instanceName: String? = nil) -> DiagnosticsClient {
         return DiagnosticsClient(
             apiKey: Self.testApiKey,
-            instanceName: testInstanceName,
+            instanceName: instanceName ?? testInstanceName,
             enabled: true,
             sampleRate: 1.0,
             remoteConfigClient: nil,
@@ -1090,5 +1208,16 @@ class TestDiagnosticsHandler: URLProtocol {
             )!
             return (response, nil)
         }
+    }
+}
+
+// MARK: - CrashCatcher Testing Helpers
+
+extension CrashCatcher {
+
+    static func writeFakeCrashReport(_ content: String) {
+        createStorageDirectoryIfNeeded()
+        guard let path = crashReportPath else { return }
+        try? content.data(using: .utf8)?.write(to: path)
     }
 }

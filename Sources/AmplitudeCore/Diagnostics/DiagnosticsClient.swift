@@ -97,6 +97,12 @@ public actor DiagnosticsClient: CoreDiagnostics {
         }
     }
 
+    public var didLastRunCrash: Bool {
+        get async {
+            return CrashCatcher.didLastRunCrash
+        }
+    }
+
     public func setTag(name: String, value: String) async {
         await storage.setTag(name: name, value: value)
     }
@@ -297,8 +303,7 @@ public actor DiagnosticsClient: CoreDiagnostics {
 
         CrashCatcher.register()
 
-        if let crash = CrashCatcher.checkForPreviousCrash() {
-            CrashCatcher.clearCrashReport()
+        if let crash = CrashCatcher.consumePreviousCrash() {
             await increment(name: "analytics.crash")
             let eventProperties = ["report": crash]
             await recordEvent(name: "analytics.crash", properties: eventProperties)
