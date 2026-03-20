@@ -1,3 +1,12 @@
+## [1.4.4](https://github.com/amplitude/AmplitudeCore-Swift/compare/v1.4.3...v1.4.4) (2026-03-20)
+
+
+### Bug Fixes
+
+* also treat 403s as bad API keys ([#67](https://github.com/amplitude/AmplitudeCore-Swift/issues/67)) ([f2ca713](https://github.com/amplitude/AmplitudeCore-Swift/commit/f2ca713acbf90928e18ebcc0be8aa68b6e245db1))
+* prevent retries on invalid client state ([#66](https://github.com/amplitude/AmplitudeCore-Swift/issues/66)) ([563b4e2](https://github.com/amplitude/AmplitudeCore-Swift/commit/563b4e2b2c6b32da1bf80e187cdbc98658884823))
+* resolve crash report race between multiple DiagnosticsClient instances ([#70](https://github.com/amplitude/AmplitudeCore-Swift/issues/70)) ([6878372](https://github.com/amplitude/AmplitudeCore-Swift/commit/68783723a6b30d13d17df2eb6e70a9d7be2e3ff8))
+
 ## [1.4.3](https://github.com/amplitude/AmplitudeCore-Swift/compare/v1.4.2...v1.4.3) (2026-02-19)
 
 
