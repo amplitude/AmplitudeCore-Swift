@@ -16,6 +16,9 @@ public protocol CoreDiagnostics: Actor {
     func recordHistogram(name: String, value: Double) async
     func recordEvent(name: String, properties: [String: any Sendable]?) async
     func flush() async
+
+    /// Whether the previous session ended with a crash.
+    var didLastRunCrash: Bool { get async }
 }
 
 @available(iOS 13.0, macOS 10.15, watchOS 6.0, tvOS 13.0, *)

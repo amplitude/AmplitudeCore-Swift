@@ -11,10 +11,17 @@ import Foundation
 ///
 /// **Registration Order:** For Crashlytics compatibility, call `register()` BEFORE `FirebaseApp.configure()`.
 class CrashCatcher {
+    private enum PreviousCrashState {
+        case notDetected
+        case pending(String?)
+        case consumed
+    }
+
     private static let fatalSignals: [Int32] = [SIGABRT, SIGILL, SIGSEGV, SIGFPE, SIGBUS, SIGPIPE, SIGTRAP]
     private static var previousSignalHandlers: [Int32: sigaction] = [:]
     private static var isRegistered = false
     private static let registrationLock = NSLock()
+    private static var previousCrashState: PreviousCrashState = .notDetected
 
     // Pre-allocated for signal-safe access
     private static var crashFilePathBuffer: [CChar] = []
@@ -43,37 +50,75 @@ class CrashCatcher {
         return baseDirectory.appendingPathComponent(storagePrefix, isDirectory: true)
     }()
 
-    private static func createStorageDirectoryIfNeeded() {
+    static func createStorageDirectoryIfNeeded() {
         guard let storageDirectory else { return }
         try? FileManager.default.createDirectory(at: storageDirectory,
                                                  withIntermediateDirectories: true,
                                                  attributes: nil)
     }
 
-    private static var crashReportPath: URL? {
+    static var crashReportPath: URL? {
         storageDirectory?.appendingPathComponent(crashReportFileName)
     }
 
-    /// Checks if there was a crash in the previous session
-    static func checkForPreviousCrash() -> String? {
-        guard let crashReportPath = crashReportPath,
-              FileManager.default.fileExists(atPath: crashReportPath.path) else {
+    static var didLastRunCrash: Bool {
+        registrationLock.lock()
+        defer { registrationLock.unlock() }
+
+        materializePreviousCrashIfNeeded()
+        switch previousCrashState {
+        case .pending, .consumed:
+            return true
+        case .notDetected:
+            return false
+        }
+    }
+
+    /// Atomically reads and clears the crash report from the previous session.
+    /// Only the first caller gets the data; subsequent callers get nil.
+    static func consumePreviousCrash() -> String? {
+        registrationLock.lock()
+        defer { registrationLock.unlock() }
+
+        materializePreviousCrashIfNeeded()
+
+        guard case let .pending(report) = previousCrashState else {
             return nil
         }
 
+        previousCrashState = .consumed
+        return report
+    }
+
+    /// Resets crash detection state and removes any leftover crash report file.
+    static func reset() {
+        registrationLock.lock()
+        defer { registrationLock.unlock() }
+        previousCrashState = .notDetected
+        if let path = crashReportPath {
+            try? FileManager.default.removeItem(at: path)
+        }
+    }
+
+    private static func materializePreviousCrashIfNeeded() {
+        guard case .notDetected = previousCrashState,
+              let crashReportPath = crashReportPath,
+              FileManager.default.fileExists(atPath: crashReportPath.path) else {
+            return
+        }
+
+        let report: String?
         do {
             let data = try Data(contentsOf: crashReportPath)
             let crashReason = String(data: data, encoding: .utf8)
                 ?? String(data: data, encoding: .ascii)
                 ?? String(decoding: data, as: UTF8.self)
-            return crashReason.isEmpty ? nil : crashReason
+            report = crashReason.isEmpty ? nil : crashReason
         } catch {
-            return nil
+            report = nil
         }
-    }
 
-    static func clearCrashReport() {
-        guard let crashReportPath = crashReportPath else { return }
+        previousCrashState = .pending(report)
         try? FileManager.default.removeItem(at: crashReportPath)
     }
 
