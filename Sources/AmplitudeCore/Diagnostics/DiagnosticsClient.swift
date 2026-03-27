@@ -41,6 +41,7 @@ public actor DiagnosticsClient: CoreDiagnostics {
     private var didFlushPreviousSession = false
 
     var flushTask: Task<Void, Never>?
+    private nonisolated(unsafe) var basicTagsTask: Task<Void, Never>?
 
     private(set) nonisolated(unsafe) var initializationTask: Task<Void, Never>?
 
@@ -92,6 +93,10 @@ public actor DiagnosticsClient: CoreDiagnostics {
             }
         }
 
+        basicTagsTask = Task {
+            await self.setupBasicDiagnosticsTags()
+        }
+
         initializationTask = Task {
             await self.initializeTasksIfNeeded()
         }
@@ -109,6 +114,16 @@ public actor DiagnosticsClient: CoreDiagnostics {
 
     public func setTags(_ tags: [String: String]) async {
         await storage.setTags(tags)
+    }
+
+    public func getTag(name: String) async -> String? {
+        await basicTagsTask?.value
+        return await storage.getTag(name: name)
+    }
+
+    public func getTags() async -> [String: String] {
+        await basicTagsTask?.value
+        return await storage.getTags()
     }
 
     public func increment(name: String, size: Int) async {
@@ -205,11 +220,10 @@ public actor DiagnosticsClient: CoreDiagnostics {
 
     func initializeTasksIfNeeded() async {
         async let previous: () = self.flushPreviousSessions()
-        async let basicTags: () = self.setupBasicDiagnosticsTags()
         async let sampledIn: () = self.recordSampledInIfNeeded()
         async let crashCatch: () = self.setupCrashCatch()
 
-        _ = await (previous, basicTags, sampledIn, crashCatch)
+        _ = await (previous, sampledIn, crashCatch, basicTagsTask?.value)
     }
 
     deinit {

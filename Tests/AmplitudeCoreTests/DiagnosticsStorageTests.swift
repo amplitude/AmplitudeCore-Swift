@@ -78,6 +78,37 @@ final class DiagnosticsStorageTests: XCTestCase {
         XCTAssertEqual(tags.count, 2)
     }
 
+    func testGetTag() async throws {
+        await storage.setTag(name: "test_tag", value: "test_value")
+
+        let value = await storage.getTag(name: "test_tag")
+        XCTAssertEqual(value, "test_value")
+    }
+
+    func testGetTagNotFound() async throws {
+        let value = await storage.getTag(name: "nonexistent")
+        XCTAssertNil(value)
+    }
+
+    func testGetTags() async throws {
+        await storage.setTags([
+            "tag1": "value1",
+            "tag2": "value2",
+            "tag3": "value3"
+        ])
+
+        let tags = await storage.getTags()
+        XCTAssertEqual(tags.count, 3)
+        XCTAssertEqual(tags["tag1"], "value1")
+        XCTAssertEqual(tags["tag2"], "value2")
+        XCTAssertEqual(tags["tag3"], "value3")
+    }
+
+    func testGetTagsEmpty() async throws {
+        let tags = await storage.getTags()
+        XCTAssertTrue(tags.isEmpty)
+    }
+
     // MARK: - Counter Tests
 
     func testIncrement() async throws {
