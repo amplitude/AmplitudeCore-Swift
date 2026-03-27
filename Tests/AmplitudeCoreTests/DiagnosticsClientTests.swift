@@ -146,6 +146,45 @@ final class DiagnosticsClientTests: XCTestCase {
         XCTAssertFalse(isRunning)
     }
 
+    func testGetTag() async throws {
+        let client = makeDiagnosticsClient()
+
+        await client.setTag(name: "test_tag", value: "test_value")
+
+        let value = await client.getTag(name: "test_tag")
+        XCTAssertEqual(value, "test_value")
+    }
+
+    func testGetTagNotFound() async throws {
+        let client = makeDiagnosticsClient()
+
+        let value = await client.getTag(name: "nonexistent")
+        XCTAssertNil(value)
+    }
+
+    func testGetTags() async throws {
+        let client = makeDiagnosticsClient()
+
+        await client.setTags([
+            "custom_tag1": "value1",
+            "custom_tag2": "value2"
+        ])
+
+        let tags = await client.getTags()
+        XCTAssertEqual(tags["custom_tag1"], "value1")
+        XCTAssertEqual(tags["custom_tag2"], "value2")
+    }
+
+    func testGetTagsIncludesBasicTags() async throws {
+        let client = makeDiagnosticsClient()
+
+        // getTag/getTags await basicTagsTask, so SDK-populated tags
+        // should be present without manually waiting for initializationTask
+        let tags = await client.getTags()
+        XCTAssertNotNil(tags["platform"])
+        XCTAssertNotNil(tags["os_name"])
+    }
+
     // MARK: - Counter Tests
 
     func testIncrementAndFlush() async throws {

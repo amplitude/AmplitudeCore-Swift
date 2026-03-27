@@ -12,6 +12,8 @@ import Foundation
 public protocol CoreDiagnostics: Actor {
     func setTag(name: String, value: String) async
     func setTags(_ tags: [String: String]) async
+    func getTag(name: String) async -> String?
+    func getTags() async -> [String: String]
     func increment(name: String, size: Int) async
     func recordHistogram(name: String, value: Double) async
     func recordEvent(name: String, properties: [String: any Sendable]?) async
@@ -41,6 +43,20 @@ public extension CoreDiagnostics {
         }
     }
 
+    nonisolated func getTag(name: String, completion: @escaping @Sendable (String?) -> Void) {
+        Task.detached {
+            let value = await self.getTag(name: name)
+            completion(value)
+        }
+    }
+
+    nonisolated func getTags(completion: @escaping @Sendable ([String: String]) -> Void) {
+        Task.detached {
+            let tags = await self.getTags()
+            completion(tags)
+        }
+    }
+
     nonisolated func increment(name: String, size: Int = 1) {
         Task.detached {
             await self.increment(name: name, size: size)
@@ -56,6 +72,13 @@ public extension CoreDiagnostics {
     nonisolated func recordEvent(name: String, properties: [String: any Sendable]? = nil) {
         Task.detached {
             await self.recordEvent(name: name, properties: properties)
+        }
+    }
+
+    nonisolated func didLastRunCrash(completion: @escaping @Sendable (Bool) -> Void) {
+        Task.detached {
+            let crashed = await self.didLastRunCrash
+            completion(crashed)
         }
     }
 }

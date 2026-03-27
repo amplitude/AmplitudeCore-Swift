@@ -76,6 +76,14 @@ actor DiagnosticsStorage {
         startPersistenceTimerIfNeeded()
     }
 
+    func getTag(name: String) -> String? {
+        tags[name]
+    }
+
+    func getTags() -> [String: String] {
+        tags
+    }
+
     func increment(name: String, size: Int = 1) {
         counters[name] = (counters[name] ?? 0) + size
         hasUnsavedCounters = true
