@@ -1,3 +1,10 @@
+## [1.4.5](https://github.com/amplitude/AmplitudeCore-Swift/compare/v1.4.4...v1.4.5) (2026-03-27)
+
+
+### Bug Fixes
+
+* add getTag and getTags to CoreDiagnostics ([#74](https://github.com/amplitude/AmplitudeCore-Swift/issues/74)) ([e6f09b1](https://github.com/amplitude/AmplitudeCore-Swift/commit/e6f09b1b8aaff0350ecf33e29b7f24e2b02503d1))
+
 ## [1.4.4](https://github.com/amplitude/AmplitudeCore-Swift/compare/v1.4.3...v1.4.4) (2026-03-20)
 
 
