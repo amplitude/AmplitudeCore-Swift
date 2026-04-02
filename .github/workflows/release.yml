@@ -14,7 +14,7 @@ jobs:
     runs-on: macos-15
     steps:
       - name: ${{ github.actor }} permission check to do a release
-        uses: octokit/request-action@v2.x
+        uses: octokit/request-action@02f5e7c637a73a3b12ed81015fa7fb5f11cc5d7d # v2.x
         with:
           route: GET /repos/:repository/collaborators/${{ github.actor }}
           repository: ${{ github.repository }}
@@ -31,7 +31,7 @@ jobs:
     runs-on: macos-15
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
 
         # Use a modern version of xcode to compile build tools
         # See https://github.com/swiftlang/swift-package-manager/issues/4651
@@ -50,7 +50,7 @@ jobs:
           sudo xcodebuild -downloadPlatform visionOS
 
       - name: Checkout swift-create-xcframework
-        uses: actions/checkout@v4
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
           repository: segment-integrations/swift-create-xcframework
           path: swift-create-xcframework
@@ -60,7 +60,7 @@ jobs:
         run: echo "cache_key=$(xcodebuild -version | head -n 1 | tr -d ' ')-$(git -C swift-create-xcframework rev-parse HEAD)" >> $GITHUB_OUTPUT
 
       - name: Restore swift-create-xcframework Build cache
-        uses: actions/cache@v4
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with:
           path: swift-create-xcframework/.build
           key: ${{ runner.os }}-build-${{ steps.compute-cache-key.outputs.cache_key }}
