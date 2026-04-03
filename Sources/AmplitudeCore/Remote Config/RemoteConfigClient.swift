@@ -136,12 +136,13 @@ public actor RemoteConfigClient: NSObject {
 
         super.init()
 
-        fetchRemoteTask = Task.detached { [urlSession, serverUrl, apiKey, maxRetryDelay, weak self] in
+        fetchRemoteTask = Task.detached { [urlSession, serverUrl, apiKey, maxRetryDelay, storage] in
             let config = try await Self.fetch(urlSession: urlSession,
                                               serverUrl: serverUrl,
                                               apiKey: apiKey,
                                               maxRetryDelay: maxRetryDelay)
-            try? await self?.storage.setConfig(config)
+            try Task.checkCancellation()
+            try? await storage.setConfig(config)
             return config
         }
     }
@@ -301,12 +302,14 @@ public actor RemoteConfigClient: NSObject {
 
     @discardableResult
     private func _updateConfigs() -> Task<RemoteConfigInfo, Error> {
-        fetchRemoteTask = Task.detached { [urlSession, serverUrl, apiKey, maxRetryDelay, weak self] in
+        let storage = self.storage
+        fetchRemoteTask = Task.detached { [urlSession, serverUrl, apiKey, maxRetryDelay, storage] in
             let config = try await Self.fetch(urlSession: urlSession,
                                               serverUrl: serverUrl,
                                               apiKey: apiKey,
                                               maxRetryDelay: maxRetryDelay)
-            try? await self?.storage.setConfig(config)
+            try Task.checkCancellation()
+            try? await storage.setConfig(config)
             return config
         }
         return fetchRemoteTask
