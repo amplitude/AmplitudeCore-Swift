@@ -1,0 +1,16 @@
+name: Remote Config E2E Test
+
+on:
+  pull_request:
+  push:
+    branches:
+        - main
+  workflow_call:
+
+jobs:
+  call-remote-config-e2e-test:
+    name: Remote Config E2E Test
+    uses: amplitude/e2e-test-ios/.github/workflows/remote-config-e2e-test-sdk.yml@main
+    secrets: inherit
+    with:
+      amplitude_core_ref: ${{ github.ref }}
