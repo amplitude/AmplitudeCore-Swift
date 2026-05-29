@@ -107,12 +107,15 @@ jobs:
           tmp="$(mktemp -d)"
           unzip -qo AmplitudeCore.zip -d "$tmp"
           unzip -qo AmplitudeCoreNoUIKit.zip -d "$tmp"
-          bad="$(find "$tmp" -type f -path '*.framework/*' | while read -r b; do
-            file "$b" | grep -q Mach-O || continue
-            otool -l "$b" | grep -q '\.xctoolchain' && echo "$b"
-          done)"
-          if [ -n "$bad" ]; then
-            echo "::error::toolchain rpath still present in:"; echo "$bad"; exit 1
+          found=0
+          while IFS= read -r b; do
+            if file "$b" | grep -q Mach-O && otool -l "$b" | grep -q '\.xctoolchain'; then
+              echo "::error::toolchain rpath still present in $b"
+              found=1
+            fi
+          done < <(find "$tmp" -type f -path '*.framework/*')
+          if [ "$found" -ne 0 ]; then
+            exit 1
           fi
           echo "OK: no .xctoolchain rpath in any AmplitudeCore xcframework slice"
 
