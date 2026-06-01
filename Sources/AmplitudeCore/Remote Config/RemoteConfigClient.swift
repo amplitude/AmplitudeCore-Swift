@@ -288,7 +288,7 @@ public actor RemoteConfigClient: NSObject {
                         break
                     case .waitForRemote:
                         // Wait until the initial callback from subscribe is fired
-                        guard callback.lastCallbackTime == nil else {
+                        guard callback.lastCallbackTime != nil else {
                             continue
                         }
                     }

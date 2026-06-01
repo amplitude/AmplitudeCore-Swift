@@ -326,6 +326,40 @@ final class RemoteConfigTests: XCTestCase {
     }
 
     @available(macOS 10.15, iOS 13.0, watchOS 6.0, tvOS 13.0, *)
+    func testWaitForRemoteDeliveryStrategyReceivesSubsequentUpdates() async throws {
+        TestRemoteConfigHandler.responseHandler = TestRemoteConfigHandler.errorResponseHandler(statusCode: 400)
+
+        let remoteConfig: RemoteConfigClient.RemoteConfig = ["remote": 1]
+        let remoteConfigClient = makeRemoteConfigClient()
+
+        let didReceiveInitialResponseExpectation = XCTestExpectation(description: "it receives initial remote failure")
+        didReceiveInitialResponseExpectation.assertForOverFulfill = true
+
+        let didReceiveUpdateExpectation = XCTestExpectation(description: "it receives subsequent remote update")
+        didReceiveUpdateExpectation.assertForOverFulfill = true
+
+        remoteConfigClient.subscribe(deliveryMode: .waitForRemote()) { config, source, lastFetch in
+            XCTAssertEqual(source, .remote)
+
+            if let config {
+                XCTAssertEqual(config as NSDictionary, remoteConfig as NSDictionary)
+                XCTAssertNotNil(lastFetch)
+                didReceiveUpdateExpectation.fulfill()
+            } else {
+                XCTAssertNil(lastFetch)
+                didReceiveInitialResponseExpectation.fulfill()
+            }
+        }
+
+        await fulfillment(of: [didReceiveInitialResponseExpectation], timeout: 3)
+
+        TestRemoteConfigHandler.responseHandler = TestRemoteConfigHandler.successResponseHandler(remoteConfig)
+        remoteConfigClient.updateConfigs()
+
+        await fulfillment(of: [didReceiveUpdateExpectation], timeout: 3)
+    }
+
+    @available(macOS 10.15, iOS 13.0, watchOS 6.0, tvOS 13.0, *)
     func testWaitForRemoteDeliveryStrategyTimeout() async throws {
         let didSendRemoteRequestExpectation = XCTestExpectation(description: "it did request config")
         TestRemoteConfigHandler.responseHandler = { request in
