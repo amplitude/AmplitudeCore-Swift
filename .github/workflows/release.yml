@@ -81,6 +81,7 @@ jobs:
           --skip-binary-targets \
           --stack-evolution \
           --xc-setting DEFINES_MODULE=1 \
+          --xc-setting "LD_RUNPATH_SEARCH_PATHS=@executable_path/Frameworks @loader_path/Frameworks /usr/lib/swift" \
           --zip
 
       - name: Build Framework No UIKit
@@ -97,7 +98,34 @@ jobs:
           --stack-evolution \
           --xc-setting DEFINES_MODULE=1 \
           --xc-setting AMPLITUDE_DISABLE_UIKIT=1 \
+          --xc-setting "LD_RUNPATH_SEARCH_PATHS=@executable_path/Frameworks @loader_path/Frameworks /usr/lib/swift" \
           --zip
+
+      - name: Assert no toolchain rpath in xcframeworks
+        run: |
+          set -euo pipefail
+          tmp="$(mktemp -d)"
+          unzip -qo AmplitudeCore.zip -d "$tmp"
+          unzip -qo AmplitudeCoreNoUIKit.zip -d "$tmp"
+          found=0
+          inspected=0
+          while IFS= read -r b; do
+            if file "$b" | grep -q Mach-O; then
+              inspected=$((inspected + 1))
+              if otool -l "$b" | grep -q '\.xctoolchain'; then
+                echo "::error::toolchain rpath still present in $b"
+                found=1
+              fi
+            fi
+          done < <(find "$tmp" -type f -path '*.framework/*')
+          if [ "$inspected" -eq 0 ]; then
+            echo "::error::no Mach-O binaries found in AmplitudeCore xcframework slices"
+            exit 1
+          fi
+          if [ "$found" -ne 0 ]; then
+            exit 1
+          fi
+          echo "OK: no .xctoolchain rpath in any AmplitudeCore xcframework slice"
 
       - name: Validate Podfile
         run: |
