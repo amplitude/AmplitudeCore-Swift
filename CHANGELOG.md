@@ -1,3 +1,10 @@
+## [1.4.6](https://github.com/amplitude/AmplitudeCore-Swift/compare/v1.4.5...v1.4.6) (2026-06-01)
+
+
+### Bug Fixes
+
+* remove Xcode toolchain rpath from xcframework that breaks app notarization ([#81](https://github.com/amplitude/AmplitudeCore-Swift/issues/81)) ([4541b8d](https://github.com/amplitude/AmplitudeCore-Swift/commit/4541b8d9e83a45520efa5a19fb7add59cd60bfeb))
+
 ## [1.4.5](https://github.com/amplitude/AmplitudeCore-Swift/compare/v1.4.4...v1.4.5) (2026-03-27)
 
 
