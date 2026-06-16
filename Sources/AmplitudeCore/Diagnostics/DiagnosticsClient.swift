@@ -108,6 +108,17 @@ public actor DiagnosticsClient: CoreDiagnostics {
         }
     }
 
+    /// Synchronously reports whether the previous app run ended in a crash.
+    ///
+    /// Unlike the async instance property, this needs **no initialized client and no `await`**:
+    /// it reads a lock-guarded static that self-materializes from disk. Use it to gate setup
+    /// that must run *before* any Amplitude SDK is initialized (e.g. closing open guides/surveys
+    /// after a prior crash). As a `static` member of an `actor` it is not actor-isolated, so it
+    /// is safe to read from any synchronous context.
+    public static var didLastRunCrash: Bool {
+        CrashCatcher.didLastRunCrash
+    }
+
     public func setTag(name: String, value: String) async {
         await storage.setTag(name: name, value: value)
     }

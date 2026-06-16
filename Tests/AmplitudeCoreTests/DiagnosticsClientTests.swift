@@ -1126,6 +1126,33 @@ final class DiagnosticsClientTests: XCTestCase {
         XCTAssertEqual(crashEvents1.count + crashEvents2.count, 1, "Crash event should be recorded by exactly one client")
     }
 
+    // MARK: - Synchronous Crash Accessor Tests
+
+    func testStaticDidLastRunCrash_noCrashFile_returnsFalse() {
+        // No await, no DiagnosticsClient instance — this is the G+S pre-init call shape.
+        XCTAssertFalse(DiagnosticsClient.didLastRunCrash)
+    }
+
+    func testStaticDidLastRunCrash_withCrashFile_returnsTrue() {
+        CrashCatcher.writeFakeCrashReport("Fatal Signal: SIGSEGV (11)")
+
+        // Read synchronously without instantiating a client.
+        XCTAssertTrue(DiagnosticsClient.didLastRunCrash)
+    }
+
+    func testStaticDidLastRunCrash_matchesInstanceAsyncProperty() async {
+        CrashCatcher.writeFakeCrashReport("Fatal Signal: SIGABRT (6)")
+
+        let syncValue = DiagnosticsClient.didLastRunCrash
+
+        let client = makeDiagnosticsClient()
+        await client.initializationTask?.value
+        let asyncValue = await client.didLastRunCrash
+
+        XCTAssertTrue(syncValue)
+        XCTAssertEqual(syncValue, asyncValue, "Static sync accessor must agree with the instance async property")
+    }
+
     // MARK: - Util
 
     private func makeDiagnosticsClient(instanceName: String? = nil) -> DiagnosticsClient {
