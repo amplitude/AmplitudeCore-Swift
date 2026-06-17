@@ -1,3 +1,11 @@
+## [1.4.7](https://github.com/amplitude/AmplitudeCore-Swift/compare/v1.4.6...v1.4.7) (2026-06-17)
+
+
+### Bug Fixes
+
+* **internal:** make didLastRunCrash readable synchronously without a client ([#82](https://github.com/amplitude/AmplitudeCore-Swift/issues/82)) ([82582ad](https://github.com/amplitude/AmplitudeCore-Swift/commit/82582ad657776071a41c3779b80854b84ceb5564))
+* waitForRemote subscribers should receive subsequent config updates ([#80](https://github.com/amplitude/AmplitudeCore-Swift/issues/80)) ([2a20692](https://github.com/amplitude/AmplitudeCore-Swift/commit/2a2069279313a57f0533e06fc1d2da3a73ba4d74))
+
 ## [1.4.6](https://github.com/amplitude/AmplitudeCore-Swift/compare/v1.4.5...v1.4.6) (2026-06-01)
 
 
