@@ -136,12 +136,12 @@ public actor RemoteConfigClient: NSObject {
 
         super.init()
 
-        fetchRemoteTask = Task.detached { [urlSession, serverUrl, apiKey, maxRetryDelay, weak self] in
+        fetchRemoteTask = Task.detached { [urlSession, serverUrl, apiKey, maxRetryDelay, storage] in
             let config = try await Self.fetch(urlSession: urlSession,
                                               serverUrl: serverUrl,
                                               apiKey: apiKey,
                                               maxRetryDelay: maxRetryDelay)
-            try? await self?.storage.setConfig(config)
+            try? await storage.setConfig(config)
             return config
         }
     }
@@ -160,8 +160,10 @@ public actor RemoteConfigClient: NSObject {
                                       deliveryMode: DeliveryMode = .all,
                                       callback: @escaping RemoteConfigCallback) -> RemoteConfigSubscription {
         let id = UUID()
-        Task { [weak self] in
-            await self?._subscribe(id: id, key: key, deliveryMode: deliveryMode, callback: callback)
+        // Strong self, not `[weak self]`: a weak ref to this NSObject-rooted actor leaks a 32-byte
+        // ObjC weak side table (issue #57). Transient task, not retained by self — no cycle.
+        Task { [self] in
+            await _subscribe(id: id, key: key, deliveryMode: deliveryMode, callback: callback)
         }
         return id
     }
@@ -173,7 +175,8 @@ public actor RemoteConfigClient: NSObject {
         let callbackInfo = CallbackInfo(id: id, key: key, deliveryMode: deliveryMode, callback: callback)
         callbacks.append(callbackInfo)
 
-        Task.detached { [weak self, fetchLocalTask, fetchRemoteTask] in
+        // Strong self (see subscribe, issue #57); keeps self alive until the fetch settles.
+        Task.detached { [self, fetchLocalTask, fetchRemoteTask] in
             switch callbackInfo.deliveryMode {
             case .all:
                 await withThrowingTaskGroup(of: (configInfo: RemoteConfigInfo, source: Source).self) { [fetchLocalTask, fetchRemoteTask] taskGroup in
@@ -190,7 +193,7 @@ public actor RemoteConfigClient: NSObject {
                         if case .success(let result) = taskGroupResult {
                             didSendCallback = true
 
-                            await self?.sendCallback(callbackInfo, configInfo: result.configInfo, source: result.source)
+                            await self.sendCallback(callbackInfo, configInfo: result.configInfo, source: result.source)
 
                             // no need to send local callbacks if we already have remote
                             if case .remote = result.source {
@@ -203,7 +206,7 @@ public actor RemoteConfigClient: NSObject {
                         return
                     }
 
-                    await self?.sendCallback(callbackInfo, configInfo: nil, source: .remote)
+                    await self.sendCallback(callbackInfo, configInfo: nil, source: .remote)
                 }
             case .waitForRemote(timeout: let timeout):
                 let fetchTask = Task {
@@ -221,18 +224,13 @@ public actor RemoteConfigClient: NSObject {
                 do {
                     let remoteConfig = try await fetchTask.value
                     timeoutTask.cancel()
-                    if let self {
-                        await sendCallback(callbackInfo, configInfo: remoteConfig, source: .remote)
-                    }
+                    await self.sendCallback(callbackInfo, configInfo: remoteConfig, source: .remote)
                 } catch {
-                    guard let self else {
-                        return
-                    }
                     // timeout or remote fetch error, try storage
                     if let localConfig = try? await fetchLocalTask.value {
-                        await sendCallback(callbackInfo, configInfo: localConfig, source: .cache)
+                        await self.sendCallback(callbackInfo, configInfo: localConfig, source: .cache)
                     } else {
-                        await sendCallback(callbackInfo, configInfo: nil, source: .remote)
+                        await self.sendCallback(callbackInfo, configInfo: nil, source: .remote)
                     }
                 }
             }
@@ -249,8 +247,9 @@ public actor RemoteConfigClient: NSObject {
         guard let uuid = token as? UUID else {
             return
         }
-        Task { [weak self] in
-            await self?._unsubscribe(id: uuid)
+        // Strong self (see subscribe, issue #57).
+        Task { [self] in
+            await _unsubscribe(id: uuid)
         }
     }
 
@@ -262,51 +261,49 @@ public actor RemoteConfigClient: NSObject {
      Requests that the Remote config client updates its configs.
      */
     public nonisolated func updateConfigs() {
-        Task.detached { [weak self] in
-            guard let fetchRemoteTask = await self?.fetchRemoteTask else {
-                return
-            }
+        // Strong self (see subscribe, issue #57); keeps self alive until the update completes.
+        Task.detached { [self] in
+            let fetchRemoteTask = await self.fetchRemoteTask
             // wait for any existing fetches to complete
             switch await fetchRemoteTask.result {
             case .success(let configInfo):
                 guard configInfo.lastFetch.timeIntervalSinceNow < -Config.minTimeBetweenFetches else {
-                    self?.logger.debug(message: "[RemoteConfigClient] Skipping updateConfigs: Too recent")
+                    self.logger.debug(message: "[RemoteConfigClient] Skipping updateConfigs: Too recent")
                     return
                 }
             case .failure(let error as RemoteConfigError):
                 guard error != .invalidApiKey else {
-                    self?.logger.debug(message: "[RemoteConfigClient] Skipping updateConfigs: Invalid API key")
+                    self.logger.debug(message: "[RemoteConfigClient] Skipping updateConfigs: Invalid API key")
                     return
                 }
             case .failure:
                 break
             }
-            if let updatedRemoteConfig = try await self?._updateConfigs().value, let self {
-                for callback in await self.callbacks {
-                    switch callback.deliveryMode {
-                    case .all:
-                        break
-                    case .waitForRemote:
-                        // Wait until the initial callback from subscribe is fired
-                        guard callback.lastCallbackTime != nil else {
-                            continue
-                        }
+            let updatedRemoteConfig = try await self._updateConfigs().value
+            for callback in await self.callbacks {
+                switch callback.deliveryMode {
+                case .all:
+                    break
+                case .waitForRemote:
+                    // Wait until the initial callback from subscribe is fired
+                    guard callback.lastCallbackTime != nil else {
+                        continue
                     }
-
-                    await self.sendCallback(callback, configInfo: updatedRemoteConfig, source: .remote)
                 }
+
+                await self.sendCallback(callback, configInfo: updatedRemoteConfig, source: .remote)
             }
         }
     }
 
     @discardableResult
     private func _updateConfigs() -> Task<RemoteConfigInfo, Error> {
-        fetchRemoteTask = Task.detached { [urlSession, serverUrl, apiKey, maxRetryDelay, weak self] in
+        fetchRemoteTask = Task.detached { [urlSession, serverUrl, apiKey, maxRetryDelay, storage] in
             let config = try await Self.fetch(urlSession: urlSession,
                                               serverUrl: serverUrl,
                                               apiKey: apiKey,
                                               maxRetryDelay: maxRetryDelay)
-            try? await self?.storage.setConfig(config)
+            try? await storage.setConfig(config)
             return config
         }
         return fetchRemoteTask

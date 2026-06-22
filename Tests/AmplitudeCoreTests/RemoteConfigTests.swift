@@ -11,14 +11,28 @@ import XCTest
 
 final class RemoteConfigTests: XCTestCase {
 
-    static let apiKey = "testApiKey"
     static let serverUrl = "http://www.amplitude.com"
+
+    // Each test gets a unique apiKey. Clients are no longer cancelled when released (the #57 fix
+    // captures `self` strongly in subscribe/updateConfigs), so a prior test's still-retrying client
+    // can outlive its test. The unique apiKey lets the shared TestRemoteConfigHandler ignore those
+    // stray requests instead of miscounting them against the current test.
+    private static var apiKeyCounter = 0
+    private var apiKey = "testApiKey"
 
     private static let testSessionConfiguration: URLSessionConfiguration = {
         let configuration = URLSessionConfiguration.ephemeral
         configuration.protocolClasses = [TestRemoteConfigHandler.self]
         return configuration
     }()
+
+    override func setUp() {
+        super.setUp()
+        Self.apiKeyCounter += 1
+        apiKey = "testApiKey-\(Self.apiKeyCounter)"
+        TestRemoteConfigHandler.activeApiKey = apiKey
+        TestRemoteConfigHandler.responseHandler = nil
+    }
 
     @available(macOS 10.15, iOS 13.0, watchOS 6.0, tvOS 13.0, *)
     func testRequestsConfigAndUpdatesCache() async throws {
@@ -648,11 +662,59 @@ final class RemoteConfigTests: XCTestCase {
         try await verifyRemoteConfig(input: badUnicodeEscape)
     }
 
+    // MARK: - Memory management
+
+    // Regression test for https://github.com/amplitude/AmplitudeCore-Swift/issues/57
+    //
+    // RemoteConfigClient is an `actor` rooted in `NSObject`, and its tasks captured `[weak self]`.
+    // Forming a weak reference to an NSObject-rooted instance routes through the ObjC weak
+    // side-table (`formWeakReference` -> `swift_weakInit`); Instruments flags the resulting 32-byte
+    // entry as a leak that persists for the instance's lifetime.
+    //
+    // The fix keeps `NSObject` but removes every `[weak self]` capture: init/_updateConfigs capture
+    // `storage`, and the transient subscribe/unsubscribe/updateConfigs tasks capture `self` strongly.
+    // This asserts the client still deallocates once its last strong reference is dropped — i.e. the
+    // strong captures introduced no retain cycle.
+    @available(macOS 10.15, iOS 13.0, watchOS 6.0, tvOS 13.0, *)
+    func testClientDeallocatesAfterRelease() async throws {
+        TestRemoteConfigHandler.responseHandler = TestRemoteConfigHandler.successResponseHandler()
+
+        weak var weakClient: RemoteConfigClient?
+        do {
+            let client = makeRemoteConfigClient()
+            weakClient = client
+
+            // Drain the init's remote fetch within this test before releasing the client.
+            // TestRemoteConfigHandler.responseHandler is shared static state; releasing the client
+            // with its fetch still in flight lets that request land on — and miscount against — a
+            // later test's handler.
+            let didFetch = XCTestExpectation(description: "remote fetch settled")
+            client.subscribe(deliveryMode: .all) { _, source, _ in
+                if case .remote = source { didFetch.fulfill() }
+            }
+            await fulfillment(of: [didFetch], timeout: 3)
+            XCTAssertNotNil(weakClient)
+        }
+
+        // Once the subscribe task releases its strong `self` (right after the awaited remote
+        // callback) the client has no remaining references and should deallocate. Poll until it
+        // does — this exits as soon as `weakClient` is nil, so the generous bound only matters under
+        // extreme load.
+        var attempts = 0
+        while weakClient != nil && attempts < 500 {
+            try await Task.sleep(nanoseconds: 20_000_000) // 20ms (≤10s total, exits early)
+            attempts += 1
+        }
+
+        XCTAssertNil(weakClient,
+                     "RemoteConfigClient was not deallocated after its last strong reference was released")
+    }
+
     // MARK: - Util
 
     @available(macOS 10.15, iOS 13.0, watchOS 6.0, tvOS 13.0, *)
     private func makeRemoteConfigClient(storage: RemoteConfigStorage = RemoteConfigInMemoryStorage()) -> RemoteConfigClient {
-        return RemoteConfigClient(apiKey: Self.apiKey,
+        return RemoteConfigClient(apiKey: apiKey,
                                   serverUrl: Self.serverUrl,
                                   storage: storage,
                                   urlSessionConfiguration: Self.testSessionConfiguration,
@@ -688,6 +750,9 @@ class TestRemoteConfigHandler: URLProtocol {
     typealias ResponseHandler = (URLRequest) -> (URLResponse, Data?)
 
     static var responseHandler: ResponseHandler? = nil
+    // apiKey of the currently-running test. Requests carrying any other apiKey are stray (from a
+    // prior test's still-running client) and are answered with a terminal 400 without being counted.
+    static var activeApiKey: String = ""
 
     override class func canInit(with request: URLRequest) -> Bool {
         return true
@@ -698,6 +763,15 @@ class TestRemoteConfigHandler: URLProtocol {
     }
 
     override func startLoading() {
+        // Ignore stray requests from a prior test's still-running client (different apiKey): answer
+        // with a terminal 400 so that client stops, without affecting the current test's accounting.
+        guard request.url?.lastPathComponent == Self.activeApiKey else {
+            let response = HTTPURLResponse(url: request.url!, statusCode: 400, httpVersion: nil, headerFields: nil)!
+            client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
+            client?.urlProtocolDidFinishLoading(self)
+            return
+        }
+
         guard let responseHandler = Self.responseHandler else {
             client?.urlProtocol(self, didFailWithError: NSError(domain: NSURLErrorDomain, code: NSURLErrorUnknown))
             return
@@ -708,7 +782,7 @@ class TestRemoteConfigHandler: URLProtocol {
             components?.queryItems = nil
             return components?.url?.absoluteString
         }
-        XCTAssertEqual(baseUrl, "\(RemoteConfigTests.serverUrl)/\(RemoteConfigTests.apiKey)")
+        XCTAssertEqual(baseUrl, "\(RemoteConfigTests.serverUrl)/\(Self.activeApiKey)")
 
         DispatchQueue.global().async { [self] in
             let (response, data) = responseHandler(request)
