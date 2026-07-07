@@ -39,7 +39,7 @@ module.exports = {
               "countMatches": true
             },
             {
-              "files": ["Package.swift", "Package@swift-5.9.swift", "Package@swift-6.2.swift"],
+              "files": ["Package.swift", "Package@swift-5.9.swift", "Package@swift-6.2.swift", "Package@swift-6.4.swift"],
               "from": "https://github.com/amplitude/AmplitudeCore-Swift/releases/download/v.*/AmplitudeCore",
               "to": "https://github.com/amplitude/AmplitudeCore-Swift/releases/download/v${nextRelease.version}/AmplitudeCore",
               "results": [
@@ -57,6 +57,12 @@ module.exports = {
                 },
                 {
                   "file": "Package@swift-6.2.swift",
+                  "hasChanged": true,
+                  "numMatches": 2,
+                  "numReplacements": 2
+                },
+                {
+                  "file": "Package@swift-6.4.swift",
                   "hasChanged": true,
                   "numMatches": 2,
                   "numReplacements": 2
@@ -85,7 +91,7 @@ module.exports = {
         "prepareCmd": "cat docs/Carthage/AmplitudeCore.json | jq --arg RELEASE '${nextRelease.version}' '. + {$RELEASE: \"https://github.com/amplitude/AmplitudeCore-Swift/releases/download/v\\($RELEASE)/AmplitudeCore.zip\"}' > docs/Carthage/AmplitudeCore.json.tmp && mv docs/Carthage/AmplitudeCore.json.tmp docs/Carthage/AmplitudeCore.json"
       }],
       ["@semantic-release/git", {
-        "assets": ["AmplitudeCore.podspec", "CHANGELOG.md", "Package.swift", "Package@swift-5.9.swift", "Package@swift-6.2.swift", "docs/Carthage/AmplitudeCore.json", "Sources/AmplitudeCore/Constants.swift"],
+        "assets": ["AmplitudeCore.podspec", "CHANGELOG.md", "Package.swift", "Package@swift-5.9.swift", "Package@swift-6.2.swift", "Package@swift-6.4.swift", "docs/Carthage/AmplitudeCore.json", "Sources/AmplitudeCore/Constants.swift"],
         "message": "chore(release): ${nextRelease.version} [skip ci]\n\n${nextRelease.notes}"
       }],
        ["@semantic-release/exec", {
