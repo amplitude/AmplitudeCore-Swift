@@ -1,3 +1,10 @@
+## [1.4.8](https://github.com/amplitude/AmplitudeCore-Swift/compare/v1.4.7...v1.4.8) (2026-07-07)
+
+
+### Bug Fixes
+
+* add Package@swift-6.4.swift to avoid deprecated platform constants on Xcode 27 ([#87](https://github.com/amplitude/AmplitudeCore-Swift/issues/87)) ([1765cd8](https://github.com/amplitude/AmplitudeCore-Swift/commit/1765cd8b8407e8fa64c5dbc54f73b0354dfcc7e5))
+
 ## [1.4.7](https://github.com/amplitude/AmplitudeCore-Swift/compare/v1.4.6...v1.4.7) (2026-06-17)
 
 
