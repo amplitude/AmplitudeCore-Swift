@@ -136,14 +136,16 @@ jobs:
           CHECKSUM=$(xcrun swift package compute-checksum AmplitudeCore.zip) && \
           sed -i '' -E "/AmplitudeCore\.zip/,/checksum:/ s/(checksum: \")[^\"]*(\")/\1$CHECKSUM\2/" Package.swift && \
           sed -i '' -E "/AmplitudeCore\.zip/,/checksum:/ s/(checksum: \")[^\"]*(\")/\1$CHECKSUM\2/" Package@swift-5.9.swift && \
-          sed -i '' -E "/AmplitudeCore\.zip/,/checksum:/ s/(checksum: \")[^\"]*(\")/\1$CHECKSUM\2/" Package@swift-6.2.swift
+          sed -i '' -E "/AmplitudeCore\.zip/,/checksum:/ s/(checksum: \")[^\"]*(\")/\1$CHECKSUM\2/" Package@swift-6.2.swift && \
+          sed -i '' -E "/AmplitudeCore\.zip/,/checksum:/ s/(checksum: \")[^\"]*(\")/\1$CHECKSUM\2/" Package@swift-6.4.swift
 
       - name: Update Checksum for No UIKit
         run: |
           CHECKSUM=$(xcrun swift package compute-checksum AmplitudeCoreNoUIKit.zip) && \
           sed -i '' -E "/AmplitudeCoreNoUIKit\.zip/,/checksum:/ s/(checksum: \")[^\"]*(\")/\1$CHECKSUM\2/" Package.swift && \
           sed -i '' -E "/AmplitudeCoreNoUIKit\.zip/,/checksum:/ s/(checksum: \")[^\"]*(\")/\1$CHECKSUM\2/" Package@swift-5.9.swift && \
-          sed -i '' -E "/AmplitudeCoreNoUIKit\.zip/,/checksum:/ s/(checksum: \")[^\"]*(\")/\1$CHECKSUM\2/" Package@swift-6.2.swift
+          sed -i '' -E "/AmplitudeCoreNoUIKit\.zip/,/checksum:/ s/(checksum: \")[^\"]*(\")/\1$CHECKSUM\2/" Package@swift-6.2.swift && \
+          sed -i '' -E "/AmplitudeCoreNoUIKit\.zip/,/checksum:/ s/(checksum: \")[^\"]*(\")/\1$CHECKSUM\2/" Package@swift-6.4.swift
 
       - name: Semantic Release --dry-run
         if: ${{ github.event.inputs.dryRun == 'true'}}
