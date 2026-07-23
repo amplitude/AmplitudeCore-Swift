@@ -36,11 +36,12 @@ enum AppEnvironment: String, Sendable {
         if hasEmbeddedProvisioningProfile(bundle) {
             return .development
         }
-        // TestFlight (and other sandbox) installs use a sandbox receipt. The
-        // receipt URL's name is derived from the current process's install
-        // environment, so check `Bundle.main` directly — same technique as
-        // Firebase's GULAppEnvironmentUtil.
-        if Bundle.main.appStoreReceiptURL?.lastPathComponent == "sandboxReceipt" {
+        // TestFlight (and other sandbox) installs use a sandbox receipt — same
+        // technique as Firebase's GULAppEnvironmentUtil. Check both the current
+        // process's bundle (receipt name derived from the install environment)
+        // and the resolved host app bundle (bundle-relative receipt path), since
+        // in app extensions either one may carry the sandbox naming.
+        if [Bundle.main, bundle].contains(where: { $0.appStoreReceiptURL?.lastPathComponent == "sandboxReceipt" }) {
             return .testFlight
         }
 #if os(macOS) || targetEnvironment(macCatalyst)
