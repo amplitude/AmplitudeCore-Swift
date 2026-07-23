@@ -50,6 +50,7 @@ final class AppEnvironmentTests: XCTestCase {
     func testEnvironmentTagValues() {
         XCTAssertEqual(AppEnvironment.appStore.rawValue, "appstore")
         XCTAssertEqual(AppEnvironment.testFlight.rawValue, "testflight")
+        XCTAssertEqual(AppEnvironment.developerID.rawValue, "developerid")
         XCTAssertEqual(AppEnvironment.development.rawValue, "development")
         XCTAssertEqual(AppEnvironment.simulator.rawValue, "simulator")
     }
