@@ -26,7 +26,15 @@ final class DiagnosticsClientTests: XCTestCase {
     override func setUp() async throws {
         TestDiagnosticsHandler.reset()
         CrashCatcher.reset()
+        // Pin the environment tag so uploaded payloads are deterministic
+        // regardless of the test host (simulator, macOS, device).
+        AppEnvironment.overrideForTesting = .appStore
         testInstanceName = "test-diagnostics-instance-\(UUID().uuidString)"
+    }
+
+    override func tearDown() {
+        AppEnvironment.overrideForTesting = nil
+        super.tearDown()
     }
 
     /// Helper to skip tests that require URLProtocol on watchOS (where it doesn't work)

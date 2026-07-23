@@ -153,6 +153,9 @@ public actor DiagnosticsClient: CoreDiagnostics {
     }
 
     public func flush() async {
+        // Ensure the basic tags (device, environment, …) have landed in storage
+        // before dumping, so early flushes never upload untagged snapshots.
+        await basicTagsTask?.value
         guard shouldTrack, let snapshot = await storage.dumpAndClearCurrentSession() else { return }
         await uploadSnapshot(snapshot)
     }
@@ -310,6 +313,13 @@ public actor DiagnosticsClient: CoreDiagnostics {
         staticContext["os_name"] = await device.os_name
         staticContext["os_version"] = await device.os_version
         staticContext["platform"] = await device.platform
+        // Distribution channel (best-effort heuristics, observability) and
+        // release-build flag (deterministic), so aggregates can be filtered to
+        // production traffic. Once the tags prove reliable in the field,
+        // sampling will be gated on release builds (SDKI-14). Named "app.*" to
+        // stay clear of the org-wide "environment" (deploy env) tag key.
+        staticContext["app.environment"] = AppEnvironment.current.rawValue
+        staticContext["app.release"] = AppEnvironment.isReleaseBuild ? "true" : "false"
 
         staticContext["sdk.\(AmplitudeContext.coreLibraryName).version"] = AmplitudeContext.coreLibraryVersion
 
