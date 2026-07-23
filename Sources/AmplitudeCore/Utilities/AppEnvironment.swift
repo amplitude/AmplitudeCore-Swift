@@ -34,6 +34,41 @@ enum AppEnvironment: String, Sendable {
         overrideForTesting ?? detected
     }
 
+    /// Test hook: when set, `isReleaseBuild` returns this value instead of the detected one.
+    nonisolated(unsafe) static var releaseBuildOverrideForTesting: Bool?
+
+    /// Whether the host app is a release (non-debuggable) build.
+    ///
+    /// Unlike the distribution channel above — which relies on best-effort store
+    /// heuristics — this is deterministic: debuggable builds are marked by the
+    /// get-task-allow entitlement (macOS) or a development provisioning profile
+    /// carrying it (iOS family), and source-integrated SDK builds compile with
+    /// the host app's configuration. Guard-phase sampling (SDKI-14) will trust
+    /// all release builds.
+    static var isReleaseBuild: Bool {
+        releaseBuildOverrideForTesting ?? detectedReleaseBuild
+    }
+
+    private static let detectedReleaseBuild: Bool = {
+#if DEBUG
+        // Source integration (SPM/CocoaPods) compiles the SDK with the host
+        // app's build configuration; a debug host means a debug SDK.
+        return false
+#elseif targetEnvironment(simulator)
+        return false
+#elseif os(macOS) || targetEnvironment(macCatalyst)
+        return !isDebuggableBuild
+#else
+        // Development installs embed a provisioning profile whose entitlements
+        // carry get-task-allow=true (required for attaching a debugger). Store
+        // installs embed no profile; ad-hoc/enterprise profiles carry false.
+        guard let entitlements = embeddedProvisioningEntitlements() else {
+            return true
+        }
+        return (entitlements["get-task-allow"] as? Bool) != true
+#endif
+    }()
+
     private static let detected: AppEnvironment = {
 #if targetEnvironment(simulator)
         return .simulator
@@ -102,6 +137,30 @@ enum AppEnvironment: String, Sendable {
         return summary.hasPrefix("Developer ID Application")
     }
 #endif
+
+    /// Entitlements embedded in the host app's provisioning profile, or nil
+    /// when no profile is embedded (store installs).
+    private static func embeddedProvisioningEntitlements() -> [String: Any]? {
+        guard let path = mainAppBundle.path(forResource: "embedded", ofType: "mobileprovision"),
+              let data = try? Data(contentsOf: URL(fileURLWithPath: path)) else {
+            return nil
+        }
+        return provisioningEntitlements(in: data)
+    }
+
+    /// Extracts the `Entitlements` dictionary from a provisioning profile blob —
+    /// a CMS envelope wrapping an XML plist.
+    static func provisioningEntitlements(in data: Data) -> [String: Any]? {
+        guard let start = data.range(of: Data("<?xml".utf8)),
+              let end = data.range(of: Data("</plist>".utf8), in: start.lowerBound..<data.endIndex) else {
+            return nil
+        }
+        let plistData = data.subdata(in: start.lowerBound..<end.upperBound)
+        guard let plist = try? PropertyListSerialization.propertyList(from: plistData, options: [], format: nil) as? [String: Any] else {
+            return nil
+        }
+        return plist["Entitlements"] as? [String: Any]
+    }
 
     /// `Bundle.main`, except inside an app extension (`.appex`), where receipts
     /// and provisioning profiles live in the containing app's bundle instead.

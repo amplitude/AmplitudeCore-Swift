@@ -13,6 +13,7 @@ final class AppEnvironmentTests: XCTestCase {
 
     override func tearDown() {
         AppEnvironment.overrideForTesting = nil
+        AppEnvironment.releaseBuildOverrideForTesting = nil
         super.tearDown()
     }
 
@@ -57,6 +58,7 @@ final class AppEnvironmentTests: XCTestCase {
 
     func testEnvironmentTagIsSetOnDiagnostics() async {
         AppEnvironment.overrideForTesting = .testFlight
+        AppEnvironment.releaseBuildOverrideForTesting = true
         let client = DiagnosticsClient(
             apiKey: "test-app-environment-key",
             instanceName: "test-app-environment-\(UUID().uuidString)",
@@ -64,9 +66,43 @@ final class AppEnvironmentTests: XCTestCase {
             sampleRate: 1.0,
             remoteConfigClient: nil
         )
-        let tag = await client.getTag(name: "app.environment")
-        XCTAssertEqual(tag, "testflight")
+        let environmentTag = await client.getTag(name: "app.environment")
+        XCTAssertEqual(environmentTag, "testflight")
+        let releaseTag = await client.getTag(name: "app.release")
+        XCTAssertEqual(releaseTag, "true")
         await client.stopFlushTimer()
+    }
+
+    func testDetectedReleaseBuildIsFalseOnTestHosts() {
+        // Test hosts are debug builds (and often simulators).
+        XCTAssertFalse(AppEnvironment.isReleaseBuild)
+    }
+
+    func testProvisioningEntitlementsParsing() {
+        let plist = """
+        <?xml version="1.0" encoding="UTF-8"?>
+        <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+        <plist version="1.0">
+        <dict>
+            <key>Name</key>
+            <string>Dev Profile</string>
+            <key>Entitlements</key>
+            <dict>
+                <key>get-task-allow</key>
+                <true/>
+            </dict>
+        </dict>
+        </plist>
+        """
+        // Emulate the CMS envelope: binary garbage around the XML plist.
+        var blob = Data([0x30, 0x82, 0xDE, 0xAD])
+        blob.append(Data(plist.utf8))
+        blob.append(Data([0xBE, 0xEF]))
+
+        let entitlements = AppEnvironment.provisioningEntitlements(in: blob)
+        XCTAssertEqual(entitlements?["get-task-allow"] as? Bool, true)
+
+        XCTAssertNil(AppEnvironment.provisioningEntitlements(in: Data([0x00, 0x01])))
     }
 
     func testEnvironmentTagDoesNotAffectSampling() async {
