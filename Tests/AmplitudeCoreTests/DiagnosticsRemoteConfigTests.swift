@@ -17,6 +17,14 @@ final class DiagnosticsRemoteConfigTests: XCTestCase {
         super.setUp()
         // Reset remote config storage before each test
         TestRemoteConfigStorage.shared.reset()
+        // Pin the environment tag so uploaded payloads are deterministic
+        // regardless of the test host (simulator, macOS, device).
+        AppEnvironment.overrideForTesting = .appStore
+    }
+
+    override func tearDown() {
+        AppEnvironment.overrideForTesting = nil
+        super.tearDown()
     }
 
     /// Helper to skip tests that require URLProtocol on watchOS (where it doesn't work)
