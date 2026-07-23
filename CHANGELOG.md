@@ -1,3 +1,10 @@
+## [1.4.9](https://github.com/amplitude/AmplitudeCore-Swift/compare/v1.4.8...v1.4.9) (2026-07-23)
+
+
+### Bug Fixes
+
+* **diagnostics:** tag sessions with app distribution environment ([#91](https://github.com/amplitude/AmplitudeCore-Swift/issues/91)) ([8c50e0a](https://github.com/amplitude/AmplitudeCore-Swift/commit/8c50e0abc08253195a1acebe6e03822f0dd6855b))
+
 ## [1.4.8](https://github.com/amplitude/AmplitudeCore-Swift/compare/v1.4.7...v1.4.8) (2026-07-07)
 
 
