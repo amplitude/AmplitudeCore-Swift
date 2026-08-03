@@ -41,10 +41,7 @@ class CrashCatcher {
     private static let storagePrefix: String = "com.amplitude.crash_report"
 
     private static let storageDirectory: URL? = {
-        guard let baseDirectory = try? FileManager.default.url(for: .applicationSupportDirectory,
-                                                               in: .userDomainMask,
-                                                               appropriateFor: nil,
-                                                               create: false) else {
+        guard let baseDirectory = try? Storage.rootDirectoryURL(createIfNeeded: false) else {
             return nil
         }
         return baseDirectory.appendingPathComponent(storagePrefix, isDirectory: true)
