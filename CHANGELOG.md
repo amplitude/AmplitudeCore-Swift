@@ -1,3 +1,10 @@
+## [1.4.10](https://github.com/amplitude/AmplitudeCore-Swift/compare/v1.4.9...v1.4.10) (2026-08-04)
+
+
+### Bug Fixes
+
+* tvOS should use cache directory for storage ([#92](https://github.com/amplitude/AmplitudeCore-Swift/issues/92)) ([663aae6](https://github.com/amplitude/AmplitudeCore-Swift/commit/663aae66ca83b341cd382edad7de008074c2e4e5))
+
 ## [1.4.9](https://github.com/amplitude/AmplitudeCore-Swift/compare/v1.4.8...v1.4.9) (2026-07-23)
 
 
