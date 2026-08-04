@@ -145,10 +145,7 @@ actor DiagnosticsStorage {
 
         do {
             let fileManager = FileManager.default
-            let baseDirectory = try fileManager.url(for: .applicationSupportDirectory,
-                                                    in: .userDomainMask,
-                                                    appropriateFor: nil,
-                                                    create: true)
+            let baseDirectory = try Storage.rootDirectoryURL(fileManager: fileManager, createIfNeeded: true)
 
             let instanceDirectory = baseDirectory
                 .appendingPathComponent(Self.storagePrefix, isDirectory: true)
@@ -361,10 +358,7 @@ actor DiagnosticsStorage {
         if let storageDirectory { return storageDirectory }
 
         let fileManager = FileManager.default
-        let baseDirectory = try fileManager.url(for: .applicationSupportDirectory,
-                                                in: .userDomainMask,
-                                                appropriateFor: nil,
-                                                create: true)
+        let baseDirectory = try Storage.rootDirectoryURL(fileManager: fileManager, createIfNeeded: true)
         let directory = baseDirectory
             .appendingPathComponent(Self.storagePrefix, isDirectory: true)
             .appendingPathComponent(sanitizedInstance, isDirectory: true)

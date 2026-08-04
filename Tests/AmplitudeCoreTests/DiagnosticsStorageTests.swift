@@ -395,6 +395,27 @@ final class DiagnosticsStorageTests: XCTestCase {
 
     // MARK: - Persistence Tests
 
+#if os(tvOS)
+    func testPersistsAndLoadsDiagnosticsFromCachesOnTvOS() async throws {
+        XCTAssertEqual(Storage.rootDirectory, .cachesDirectory)
+
+        await storage.increment(name: "persisted_counter", size: 42)
+        await storage.persistIfNeeded()
+
+        let newStorage = DiagnosticsStorage(
+            instanceName: testInstanceName,
+            sessionStartAt: testTimestamp + 1,
+            logger: logger,
+            shouldStore: true
+        )
+
+        let snapshots = await newStorage.loadAndClearPreviousSessions()
+        XCTAssertEqual(snapshots.first?.counters["persisted_counter"], 42)
+
+        try? await newStorage.removeAllStoredFiles()
+    }
+#endif
+
     func testPersistAndLoadTags() async throws {
         // Set tags and a counter (tags alone don't produce a snapshot) then persist
         await storage.setTag(name: "persisted_tag_1", value: "value_1")
@@ -570,10 +591,7 @@ final class DiagnosticsStorageTests: XCTestCase {
         await oldStorage.persistIfNeeded()
 
         let fileManager = FileManager.default
-        let baseDirectory = try fileManager.url(for: .applicationSupportDirectory,
-                                                in: .userDomainMask,
-                                                appropriateFor: nil,
-                                                create: true)
+        let baseDirectory = try Storage.rootDirectoryURL(fileManager: fileManager, createIfNeeded: true)
 
         let instanceDirectory = baseDirectory
             .appendingPathComponent("com.amplitude.diagnostics", isDirectory: true)
