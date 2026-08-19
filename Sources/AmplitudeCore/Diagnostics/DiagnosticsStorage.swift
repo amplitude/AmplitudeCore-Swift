@@ -37,13 +37,58 @@ actor DiagnosticsStorage {
     private let sanitizedInstance: String
     private var storageDirectory: URL?
 
+    private let liveSessionKey: String
+
+    /// Session directories owned by a `DiagnosticsStorage` that is still alive in this process,
+    /// reference counted so storages sharing a session key don't unregister each other.
+    ///
+    /// Several storages can share one instance name: every `AmplitudeContext` — and in
+    /// Amplitude-Swift, every `Configuration` — builds its own `DiagnosticsClient`, each with a
+    /// distinct `sessionStartAt`. Without this registry, `loadAndClearPreviousSessions()` cannot
+    /// tell a sibling's *live* directory from a leftover of a previous launch, and deletes it.
+    private nonisolated(unsafe) static var liveSessions: [String: Int] = [:]
+    private static let liveSessionsLock = NSLock()
+
     init(instanceName: String, sessionStartAt: TimeInterval, logger: CoreLogger, shouldStore: Bool, persistIntervalNanoSec: UInt64 = NSEC_PER_SEC) {
         self.instanceName = instanceName
         self.logger = logger
         self.sessionStartAt = sessionStartAt
-        self.sanitizedInstance = instanceName.fnv1a64String()
+        let sanitizedInstance = instanceName.fnv1a64String()
+        self.sanitizedInstance = sanitizedInstance
         self.persistIntervalNanoSec = persistIntervalNanoSec
         self.shouldStore = shouldStore
+        // Registered up front rather than when the directory is first written, so a sibling
+        // created in between can never observe this session as dead.
+        self.liveSessionKey = Self.sessionKey(instance: sanitizedInstance,
+                                              sessionStartAt: String(sessionStartAt))
+        Self.registerLiveSession(liveSessionKey)
+    }
+
+    private static func sessionKey(instance: String, sessionStartAt: String) -> String {
+        "\(instance)/\(sessionStartAt)"
+    }
+
+    private static func registerLiveSession(_ key: String) {
+        liveSessionsLock.lock()
+        defer { liveSessionsLock.unlock() }
+        liveSessions[key, default: 0] += 1
+    }
+
+    private static func unregisterLiveSession(_ key: String) {
+        liveSessionsLock.lock()
+        defer { liveSessionsLock.unlock() }
+        guard let count = liveSessions[key] else { return }
+        if count <= 1 {
+            liveSessions.removeValue(forKey: key)
+        } else {
+            liveSessions[key] = count - 1
+        }
+    }
+
+    private static func isLiveSession(_ key: String) -> Bool {
+        liveSessionsLock.lock()
+        defer { liveSessionsLock.unlock() }
+        return liveSessions[key] != nil
     }
 
     func setShouldStore(_ shouldStore: Bool) {
@@ -171,8 +216,13 @@ actor DiagnosticsStorage {
 
                 let sessionStartAt = sessionDir.lastPathComponent
 
-                // Skip if it's the current timestamp
-                if sessionStartAt == currentSessionStartAt {
+                // Skip the current session, and any session still owned by a live storage in this
+                // process. Claiming a live sibling's directory would upload data it is still
+                // holding in memory (double counting it on the next flush) and leave the sibling
+                // writing into a directory that no longer exists.
+                if sessionStartAt == currentSessionStartAt
+                    || Self.isLiveSession(Self.sessionKey(instance: sanitizedInstance,
+                                                          sessionStartAt: sessionStartAt)) {
                     continue
                 }
 
@@ -266,11 +316,20 @@ actor DiagnosticsStorage {
     // MARK: - Persistence
 
     func persistIfNeeded() {
-        guard shouldStore else { return }
+        guard shouldStore, hasUnsavedData else { return }
+
+        // Resolved once per pass: it revalidates the directory, so doing it per file would both
+        // repeat the stat and let a mid-pass recreation miss the writes that already ran.
+        let directory: URL
+        do {
+            directory = try createStorageDirectoryIfNeeded()
+        } catch {
+            logger.error(message: "DiagnosticsStorage: Failed to create storage directory: \(error)")
+            return
+        }
 
         if hasUnsavedTags {
             do {
-                let directory = try createStorageDirectoryIfNeeded()
                 try persist(tags: tags, in: directory)
                 hasUnsavedTags = false
             } catch {
@@ -280,7 +339,6 @@ actor DiagnosticsStorage {
 
         if hasUnsavedCounters {
             do {
-                let directory = try createStorageDirectoryIfNeeded()
                 try persist(counters: counters, in: directory)
                 hasUnsavedCounters = false
             } catch {
@@ -290,7 +348,6 @@ actor DiagnosticsStorage {
 
         if hasUnsavedHistograms {
             do {
-                let directory = try createStorageDirectoryIfNeeded()
                 try persist(histograms: histograms, in: directory)
                 hasUnsavedHistograms = false
             } catch {
@@ -300,7 +357,6 @@ actor DiagnosticsStorage {
 
         if !unsavedEvents.isEmpty {
             do {
-                let directory = try createStorageDirectoryIfNeeded()
                 let logUrl = eventsFileURL(in: directory)
                 try prepareEventsLog(at: logUrl, in: directory)
                 try append(events: unsavedEvents, to: logUrl)
@@ -355,9 +411,31 @@ actor DiagnosticsStorage {
     }
 
     private func createStorageDirectoryIfNeeded() throws -> URL {
-        if let storageDirectory { return storageDirectory }
-
         let fileManager = FileManager.default
+
+        if let storageDirectory {
+            var isDirectory: ObjCBool = false
+            if fileManager.fileExists(atPath: storageDirectory.path, isDirectory: &isDirectory),
+               isDirectory.boolValue {
+                return storageDirectory
+            }
+
+            // The directory went away underneath us — another instance sharing this instance name
+            // claimed it, the OS purged it (tvOS stores under Caches), or the host app cleared
+            // Application Support. Without dropping the cached URL every later write fails with
+            // Cocoa error 4 ("The folder ... doesn't exist") for the rest of the process lifetime.
+            logger.debug(message: "DiagnosticsStorage: Storage directory is gone, recreating it")
+            self.storageDirectory = nil
+            // The directory's contents went with it, but everything it held is still in memory
+            // (persists write full maps, and `events` retains the whole session). Re-arm it all
+            // so the recreated directory is reconstructed in full, not just the deltas that
+            // happened to be unsaved.
+            hasUnsavedTags = hasUnsavedTags || !tags.isEmpty
+            hasUnsavedCounters = hasUnsavedCounters || !counters.isEmpty
+            hasUnsavedHistograms = hasUnsavedHistograms || !histograms.isEmpty
+            unsavedEvents = events
+        }
+
         let baseDirectory = try Storage.rootDirectoryURL(fileManager: fileManager, createIfNeeded: true)
         let directory = baseDirectory
             .appendingPathComponent(Self.storagePrefix, isDirectory: true)
@@ -504,5 +582,7 @@ actor DiagnosticsStorage {
     deinit {
         // Cancel any pending persistence task
         persistenceTask?.cancel()
+        // This session is over: a later instance may now claim whatever it left on disk.
+        Self.unregisterLiveSession(liveSessionKey)
     }
 }
