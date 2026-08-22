@@ -31,8 +31,8 @@ final class DiagnosticsStorageTests: XCTestCase {
     }
 
     override func tearDown() async throws {
-        // Clean up test files
-        try? await storage.removeAllStoredFiles()
+        // Clean up test files. Tests that simulate a restart release `storage` themselves.
+        try? await storage?.removeAllStoredFiles()
         storage = nil
     }
 
@@ -399,8 +399,17 @@ final class DiagnosticsStorageTests: XCTestCase {
     func testPersistsAndLoadsDiagnosticsFromCachesOnTvOS() async throws {
         XCTAssertEqual(Storage.rootDirectory, .cachesDirectory)
 
-        await storage.increment(name: "persisted_counter", size: 42)
-        await storage.persistIfNeeded()
+        // Scoped so the previous session is released before the new one loads it.
+        do {
+            let previousStorage = DiagnosticsStorage(
+                instanceName: testInstanceName,
+                sessionStartAt: testTimestamp - 1,
+                logger: logger,
+                shouldStore: true
+            )
+            await previousStorage.increment(name: "persisted_counter", size: 42)
+            await previousStorage.persistIfNeeded()
+        }
 
         let newStorage = DiagnosticsStorage(
             instanceName: testInstanceName,
@@ -424,7 +433,9 @@ final class DiagnosticsStorageTests: XCTestCase {
         await storage.persistIfNeeded()
 
         // Simulate a restart by creating a new storage with a newer timestamp
-        // It will load the old session's data as "historic"
+        // It will load the old session's data as "historic". Releasing the previous storage is
+        // part of the simulation: a session that is still live is deliberately never claimed.
+        storage = nil
         let newTimestamp = testTimestamp + 1
         let newStorage = DiagnosticsStorage(
             instanceName: testInstanceName,
@@ -459,7 +470,9 @@ final class DiagnosticsStorageTests: XCTestCase {
         await storage.increment(name: "counter_2", size: 99)
         await storage.persistIfNeeded()
 
-        // Simulate restart with newer timestamp
+        // Simulate restart with newer timestamp. Releasing the previous storage is part of the
+        // simulation: a session that is still live is deliberately never claimed.
+        storage = nil
         let newTimestamp = testTimestamp + 1
         let newStorage = DiagnosticsStorage(
             instanceName: testInstanceName,
@@ -493,7 +506,9 @@ final class DiagnosticsStorageTests: XCTestCase {
         await storage.recordHistogram(name: "metric_2", value: 50.0)
         await storage.persistIfNeeded()
 
-        // Simulate restart with newer timestamp
+        // Simulate restart with newer timestamp. Releasing the previous storage is part of the
+        // simulation: a session that is still live is deliberately never claimed.
+        storage = nil
         let newTimestamp = testTimestamp + 1
         let newStorage = DiagnosticsStorage(
             instanceName: testInstanceName,
@@ -534,7 +549,9 @@ final class DiagnosticsStorageTests: XCTestCase {
         await storage.recordEvent(name: "event_3", properties: nil)
         await storage.persistIfNeeded()
 
-        // Simulate restart with newer timestamp
+        // Simulate restart with newer timestamp. Releasing the previous storage is part of the
+        // simulation: a session that is still live is deliberately never claimed.
+        storage = nil
         let newTimestamp = testTimestamp + 1
         let newStorage = DiagnosticsStorage(
             instanceName: testInstanceName,
@@ -580,15 +597,18 @@ final class DiagnosticsStorageTests: XCTestCase {
         let oldTimestamp: TimeInterval = 1000
         let newTimestamp: TimeInterval = 2000
 
-        let oldStorage = DiagnosticsStorage(
-            instanceName: instanceName,
-            sessionStartAt: oldTimestamp,
-            logger: logger,
-            shouldStore: true
-        )
+        // Scoped so the old session is released — a live session is never treated as historic.
+        do {
+            let oldStorage = DiagnosticsStorage(
+                instanceName: instanceName,
+                sessionStartAt: oldTimestamp,
+                logger: logger,
+                shouldStore: true
+            )
 
-        await oldStorage.recordEvent(name: "rotated_event", properties: ["key": "value"])
-        await oldStorage.persistIfNeeded()
+            await oldStorage.recordEvent(name: "rotated_event", properties: ["key": "value"])
+            await oldStorage.persistIfNeeded()
+        }
 
         let fileManager = FileManager.default
         let baseDirectory = try Storage.rootDirectoryURL(fileManager: fileManager, createIfNeeded: true)
@@ -641,7 +661,9 @@ final class DiagnosticsStorageTests: XCTestCase {
         await storage.recordEvent(name: "test_event", properties: ["prop": "value"])
         await storage.persistIfNeeded()
 
-        // Simulate restart with newer timestamp
+        // Simulate restart with newer timestamp. Releasing the previous storage is part of the
+        // simulation: a session that is still live is deliberately never claimed.
+        storage = nil
         let newTimestamp = testTimestamp + 1
         let newStorage = DiagnosticsStorage(
             instanceName: testInstanceName,
@@ -676,20 +698,23 @@ final class DiagnosticsStorageTests: XCTestCase {
     // MARK: - Historic Data Tests
 
     func testLoadAndClearHistoricData() async throws {
-        // Create storage with old timestamp
+        // Create storage with old timestamp. Scoped so it is released before loading: only
+        // sessions whose storage is gone count as historic.
         let oldTimestamp = Date().timeIntervalSince1970 - 3600 // 1 hour ago
-        let oldStorage = DiagnosticsStorage(
-            instanceName: testInstanceName,
-            sessionStartAt: oldTimestamp,
-            logger: logger,
-            shouldStore: true
-        )
+        do {
+            let oldStorage = DiagnosticsStorage(
+                instanceName: testInstanceName,
+                sessionStartAt: oldTimestamp,
+                logger: logger,
+                shouldStore: true
+            )
 
-        // Add data and persist (skip events for now as they may have persistence timing issues)
-        await oldStorage.setTag(name: "old_tag", value: "old_value")
-        await oldStorage.increment(name: "old_counter", size: 99)
-        await oldStorage.recordHistogram(name: "old_metric", value: 123.0)
-        await oldStorage.persistIfNeeded()
+            // Add data and persist (skip events for now as they may have persistence timing issues)
+            await oldStorage.setTag(name: "old_tag", value: "old_value")
+            await oldStorage.increment(name: "old_counter", size: 99)
+            await oldStorage.recordHistogram(name: "old_metric", value: 123.0)
+            await oldStorage.persistIfNeeded()
+        }
 
         // Now load historic data with new storage (different timestamp)
         let snapshots = await storage.loadAndClearPreviousSessions()
@@ -709,9 +734,6 @@ final class DiagnosticsStorageTests: XCTestCase {
         // Verify directory was cleaned up
         let snapshotsAfterCleanup = await storage.loadAndClearPreviousSessions()
         XCTAssertEqual(snapshotsAfterCleanup.count, 0)
-
-        // Clean up
-        try? await oldStorage.removeAllStoredFiles()
     }
 
     func testLoadAndClearHistoricDataMultipleSessions() async throws {
@@ -757,6 +779,185 @@ final class DiagnosticsStorageTests: XCTestCase {
         // Try to load historic data (should skip current session)
         let snapshots = await storage.loadAndClearPreviousSessions()
         XCTAssertEqual(snapshots.count, 0)
+    }
+
+    // MARK: - Live Session Tests
+
+    /// Two storages sharing an instance name is what a second `AmplitudeContext`/`Configuration`
+    /// in one process produces. Neither may claim the other's directory while it is still alive.
+    func testLoadAndClearPreviousSessionsSkipsLiveSessionOfSameInstance() async throws {
+        let siblingTimestamp = testTimestamp + 1
+        let sibling = DiagnosticsStorage(
+            instanceName: testInstanceName,
+            sessionStartAt: siblingTimestamp,
+            logger: logger,
+            shouldStore: true
+        )
+        await sibling.increment(name: "sibling_counter", size: 5)
+        await sibling.persistIfNeeded()
+
+        let siblingDirectory = try sessionDirectoryURL(instanceName: testInstanceName,
+                                                       sessionStartAt: siblingTimestamp)
+        XCTAssertTrue(FileManager.default.fileExists(atPath: siblingDirectory.path))
+
+        let snapshots = await storage.loadAndClearPreviousSessions()
+
+        XCTAssertEqual(snapshots.count, 0, "A live sibling's data must not be claimed")
+        XCTAssertTrue(FileManager.default.fileExists(atPath: siblingDirectory.path),
+                      "A live sibling's directory must not be deleted")
+
+        // The sibling can still persist afterwards
+        await sibling.increment(name: "sibling_counter", size: 37)
+        await sibling.persistIfNeeded()
+        let siblingHasUnsavedCounters = await sibling.hasUnsavedCounters
+        XCTAssertFalse(siblingHasUnsavedCounters)
+
+        let siblingCounters = try loadJSON([String: Int].self,
+                                           at: siblingDirectory.appendingPathComponent("counters.json"))
+        XCTAssertEqual(siblingCounters["sibling_counter"], 42)
+
+        try? await sibling.removeAllStoredFiles()
+    }
+
+    /// Once a session's storage is released, its leftovers are fair game again — that is how data
+    /// from a previous launch (or a released `Amplitude` instance) still gets uploaded.
+    func testLoadAndClearPreviousSessionsClaimsSessionAfterStorageIsReleased() async throws {
+        let previousTimestamp = testTimestamp - 3600
+        do {
+            let previous = DiagnosticsStorage(
+                instanceName: testInstanceName,
+                sessionStartAt: previousTimestamp,
+                logger: logger,
+                shouldStore: true
+            )
+            await previous.setTag(name: "previous_tag", value: "previous_value")
+            await previous.increment(name: "previous_counter", size: 3)
+            await previous.persistIfNeeded()
+        }
+
+        let previousDirectory = try sessionDirectoryURL(instanceName: testInstanceName,
+                                                        sessionStartAt: previousTimestamp)
+        XCTAssertTrue(FileManager.default.fileExists(atPath: previousDirectory.path))
+
+        let snapshots = await storage.loadAndClearPreviousSessions()
+
+        XCTAssertEqual(snapshots.count, 1)
+        XCTAssertEqual(snapshots.first?.counters["previous_counter"], 3)
+        XCTAssertEqual(snapshots.first?.tags["previous_tag"], "previous_value")
+        XCTAssertFalse(FileManager.default.fileExists(atPath: previousDirectory.path))
+    }
+
+    // MARK: - Storage Directory Recovery Tests
+
+    /// Regression: the storage directory used to be memoized without revalidation, so once it was
+    /// removed underneath the actor every later write failed with Cocoa error 4 forever.
+    func testPersistRecreatesStorageDirectoryAfterItIsDeleted() async throws {
+        await storage.increment(name: "recovery_counter", size: 1)
+        await storage.persistIfNeeded()
+
+        let sessionDirectory = try sessionDirectoryURL(instanceName: testInstanceName,
+                                                       sessionStartAt: testTimestamp)
+        XCTAssertTrue(FileManager.default.fileExists(atPath: sessionDirectory.path))
+
+        try FileManager.default.removeItem(at: sessionDirectory)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: sessionDirectory.path))
+
+        await storage.increment(name: "recovery_counter", size: 41)
+        await storage.persistIfNeeded()
+
+        let hasUnsavedCounters = await storage.hasUnsavedCounters
+        XCTAssertFalse(hasUnsavedCounters, "The write must succeed against a recreated directory")
+
+        let counters = try loadJSON([String: Int].self,
+                                    at: sessionDirectory.appendingPathComponent("counters.json"))
+        XCTAssertEqual(counters["recovery_counter"], 42, "Counters are rewritten in full on recovery")
+    }
+
+    /// Tags are only written when they change, so a recreated directory would otherwise end up
+    /// holding counters with no tags — an untagged snapshot on the next launch.
+    func testPersistRewritesTagsAfterStorageDirectoryIsDeleted() async throws {
+        await storage.setTag(name: "recovery_tag", value: "recovery_value")
+        await storage.increment(name: "recovery_counter", size: 1)
+        await storage.persistIfNeeded()
+
+        let sessionDirectory = try sessionDirectoryURL(instanceName: testInstanceName,
+                                                       sessionStartAt: testTimestamp)
+        try FileManager.default.removeItem(at: sessionDirectory)
+
+        // Only a counter changes, yet the tags must come back with the directory.
+        await storage.increment(name: "recovery_counter", size: 1)
+        await storage.persistIfNeeded()
+
+        let tags = try loadJSON([String: String].self,
+                                at: sessionDirectory.appendingPathComponent("tags.json"))
+        XCTAssertEqual(tags["recovery_tag"], "recovery_value")
+
+        let hasUnsavedTags = await storage.hasUnsavedTags
+        XCTAssertFalse(hasUnsavedTags)
+    }
+
+    /// The already-persisted data types must come back too, not only the one whose change
+    /// triggered the persist — their files were destroyed with the directory, but the full data
+    /// is still in memory.
+    func testPersistRestoresAllDataTypesAfterStorageDirectoryIsDeleted() async throws {
+        await storage.setTag(name: "restored_tag", value: "restored_value")
+        await storage.increment(name: "restored_counter", size: 7)
+        await storage.recordHistogram(name: "restored_metric", value: 3.5)
+        await storage.recordEvent(name: "restored_event")
+        await storage.persistIfNeeded()
+
+        let sessionDirectory = try sessionDirectoryURL(instanceName: testInstanceName,
+                                                       sessionStartAt: testTimestamp)
+        try FileManager.default.removeItem(at: sessionDirectory)
+
+        // Only a tag changes — everything else is "saved" as far as the flags know.
+        await storage.setTag(name: "trigger_tag", value: "trigger_value")
+        await storage.persistIfNeeded()
+
+        let counters = try loadJSON([String: Int].self,
+                                    at: sessionDirectory.appendingPathComponent("counters.json"))
+        XCTAssertEqual(counters["restored_counter"], 7)
+
+        let histograms = try loadJSON([String: HistogramStats].self,
+                                      at: sessionDirectory.appendingPathComponent("histograms.json"))
+        XCTAssertEqual(histograms["restored_metric"]?.count, 1)
+
+        let logContents = try String(contentsOf: sessionDirectory.appendingPathComponent("events.log"),
+                                     encoding: .utf8)
+        XCTAssertTrue(logContents.contains("restored_event"))
+    }
+
+    func testEventsAreAppendedAgainAfterStorageDirectoryIsDeleted() async throws {
+        await storage.recordEvent(name: "before_deletion")
+        await storage.persistIfNeeded()
+
+        let sessionDirectory = try sessionDirectoryURL(instanceName: testInstanceName,
+                                                       sessionStartAt: testTimestamp)
+        try FileManager.default.removeItem(at: sessionDirectory)
+
+        await storage.recordEvent(name: "after_deletion")
+        await storage.persistIfNeeded()
+
+        let unsavedEvents = await storage.unsavedEvents
+        XCTAssertTrue(unsavedEvents.isEmpty)
+
+        let logContents = try String(contentsOf: sessionDirectory.appendingPathComponent("events.log"),
+                                     encoding: .utf8)
+        XCTAssertTrue(logContents.contains("after_deletion"))
+    }
+
+    // MARK: - Util
+
+    private func sessionDirectoryURL(instanceName: String, sessionStartAt: TimeInterval) throws -> URL {
+        let baseDirectory = try Storage.rootDirectoryURL(fileManager: .default, createIfNeeded: true)
+        return baseDirectory
+            .appendingPathComponent("com.amplitude.diagnostics", isDirectory: true)
+            .appendingPathComponent(instanceName.fnv1a64String(), isDirectory: true)
+            .appendingPathComponent(String(sessionStartAt), isDirectory: true)
+    }
+
+    private func loadJSON<T: Decodable>(_ type: T.Type, at url: URL) throws -> T {
+        try JSONDecoder().decode(type, from: Data(contentsOf: url))
     }
 
     // MARK: - Persistence Timer Tests
@@ -922,7 +1123,9 @@ final class DiagnosticsStorageTests: XCTestCase {
         // Wait for persistence to complete
         try await storage.waitForPendingPersistenceTask()
 
-        // Create new storage to check if data was persisted
+        // Create new storage to check if data was persisted. The previous storage is released
+        // first: a session that is still live is deliberately never claimed.
+        storage = nil
         let newStorage = DiagnosticsStorage(
             instanceName: testInstanceName,
             sessionStartAt: testTimestamp + 1,
@@ -943,7 +1146,7 @@ final class DiagnosticsStorageTests: XCTestCase {
     }
 
     func testSetShouldStoreToTrue() async throws {
-        let storageToEnable = DiagnosticsStorage(
+        var storageToEnable: DiagnosticsStorage! = DiagnosticsStorage(
             instanceName: testInstanceName,
             sessionStartAt: testTimestamp,
             logger: logger,
@@ -967,7 +1170,12 @@ final class DiagnosticsStorageTests: XCTestCase {
         // Wait for automatic persistence
         try await storageToEnable.waitForPendingPersistenceTask()
 
-        // Verify data was persisted
+        // Verify data was persisted. Both storages for this session are released first: a session
+        // that is still live is deliberately never claimed, and `storage` from setUp shares this
+        // session's timestamp.
+        storageToEnable = nil
+        storage = nil
+
         let newStorage = DiagnosticsStorage(
             instanceName: testInstanceName,
             sessionStartAt: testTimestamp + 1,
@@ -979,7 +1187,6 @@ final class DiagnosticsStorageTests: XCTestCase {
         XCTAssertGreaterThanOrEqual(snapshots.count, 1, "Data should be persisted after enabling shouldStore")
 
         // Clean up
-        try? await storageToEnable.removeAllStoredFiles()
         try? await newStorage.removeAllStoredFiles()
     }
 

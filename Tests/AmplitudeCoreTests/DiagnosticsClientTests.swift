@@ -44,6 +44,21 @@ final class DiagnosticsClientTests: XCTestCase {
         #endif
     }
 
+    /// Leaves a session directory on disk the way a previous app launch would have.
+    ///
+    /// The storage is released before this returns, which is what makes the session historic:
+    /// a session still owned by a live storage in this process is deliberately never claimed.
+    private func writePreviousSession(instanceName: String,
+                                      sessionStartAt: TimeInterval = Date().timeIntervalSince1970 - 3600,
+                                      _ body: (DiagnosticsStorage) async -> Void) async {
+        let storage = DiagnosticsStorage(instanceName: instanceName,
+                                         sessionStartAt: sessionStartAt,
+                                         logger: OSLogger(logLevel: .error),
+                                         shouldStore: true)
+        await body(storage)
+        await storage.persistIfNeeded()
+    }
+
     // MARK: - Initialization Tests
 
     func testInitializationWithSampledIn() async throws {
@@ -751,26 +766,14 @@ final class DiagnosticsClientTests: XCTestCase {
         var capturedRequests: [URLRequest] = []
         let uploadExpectation = XCTestExpectation(description: "Previous session data uploaded")
 
-        // Step 1: Create a "previous session" and persist data
-        let oldSession = DiagnosticsClient(
-            apiKey: Self.testApiKey,
-            serverZone: .US,
-            instanceName: "test-instance",
-            enabled: true,
-            sampleRate: 1.0,
-            remoteConfigClient: nil,
-            urlSessionConfiguration: Self.testSessionConfiguration
-        )
-
-        // Add data to the old session
-        await oldSession.setTag(name: "session_id", value: "old_session_123")
-        await oldSession.setTag(name: "app_version", value: "1.0.0")
-        await oldSession.increment(name: "old_counter", size: 42)
-        await oldSession.recordHistogram(name: "old_latency", value: 250.0)
-        await oldSession.recordEvent(name: "session_start", properties: ["timestamp": "2024-01-01"])
-
-        // Manually trigger persistence to save to disk
-        await oldSession.storage.persistIfNeeded()
+        // Step 1: Leave a "previous session" behind on disk
+        await writePreviousSession(instanceName: "test-instance") { storage in
+            await storage.setTag(name: "session_id", value: "old_session_123")
+            await storage.setTag(name: "app_version", value: "1.0.0")
+            await storage.increment(name: "old_counter", size: 42)
+            await storage.recordHistogram(name: "old_latency", value: 250.0)
+            await storage.recordEvent(name: "session_start", properties: ["timestamp": "2024-01-01"])
+        }
 
         // Step 2: Create a new session (simulating app restart)
         TestDiagnosticsHandler.responseHandler = { request in
@@ -823,7 +826,6 @@ final class DiagnosticsClientTests: XCTestCase {
 
         // Clean up
         await newSession.stopFlushTimer()
-        await oldSession.stopFlushTimer()
     }
 
     func testMultiplePreviousSessionsUpload() async throws {
@@ -837,24 +839,11 @@ final class DiagnosticsClientTests: XCTestCase {
         var capturedRequests: [URLRequest] = []
         let uploadExpectation = XCTestExpectation(description: "Historic sessions uploaded")
 
-        // Create a previous session and persist
-        let oldSession = DiagnosticsClient(
-            apiKey: Self.testApiKey,
-            instanceName: testInstanceName,
-            enabled: true,
-            sampleRate: 1.0,
-            remoteConfigClient: nil,
-            urlSessionConfiguration: Self.testSessionConfiguration
-        )
-
-        await oldSession.initializationTask?.value
-        await oldSession.setTag(name: "multi_session_test", value: "session_1")
-        await oldSession.increment(name: "test_counter", size: 10)
-        await oldSession.storage.persistIfNeeded()
-        await oldSession.stopFlushTimer()
-
-        // Wait a moment to ensure timestamps are different
-        try await Task.sleep(nanoseconds: NSEC_PER_SEC) // 1 seconds
+        // Leave a previous session behind on disk
+        await writePreviousSession(instanceName: testInstanceName) { storage in
+            await storage.setTag(name: "multi_session_test", value: "session_1")
+            await storage.increment(name: "test_counter", size: 10)
+        }
 
         // Create new session that should upload previous session
         TestDiagnosticsHandler.responseHandler = { request in
@@ -886,21 +875,11 @@ final class DiagnosticsClientTests: XCTestCase {
 
         let uploadExpectation = XCTestExpectation(description: "Historic data uploaded")
 
-        // Create and persist old session data
-        let oldSession = DiagnosticsClient(
-            apiKey: Self.testApiKey,
-            instanceName: testInstanceName,
-            enabled: true,
-            sampleRate: 1.0,
-            remoteConfigClient: nil,
-            urlSessionConfiguration: Self.testSessionConfiguration
-        )
-
-        await oldSession.initializationTask?.value
-        await oldSession.setTag(name: "old_data", value: "should_be_cleared")
-        await oldSession.increment(name: "test_counter", size: 1)
-        await oldSession.storage.persistIfNeeded()
-        await oldSession.stopFlushTimer()
+        // Leave old session data behind on disk
+        await writePreviousSession(instanceName: testInstanceName) { storage in
+            await storage.setTag(name: "old_data", value: "should_be_cleared")
+            await storage.increment(name: "test_counter", size: 1)
+        }
 
         // First new session uploads the data
         TestDiagnosticsHandler.responseHandler = { request in
