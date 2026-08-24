@@ -1,3 +1,15 @@
+# [1.5.0](https://github.com/amplitude/AmplitudeCore-Swift/compare/v1.4.10...v1.5.0) (2026-08-24)
+
+
+### Bug Fixes
+
+* **diagnostics:** recover from a deleted storage directory ([#95](https://github.com/amplitude/AmplitudeCore-Swift/issues/95)) ([063d793](https://github.com/amplitude/AmplitudeCore-Swift/commit/063d7935f1396daad0e4e4bae697b1fa74b18602))
+
+
+### Features
+
+* add utilities for AnalyticsEvent encoding ([#96](https://github.com/amplitude/AmplitudeCore-Swift/issues/96)) ([1043795](https://github.com/amplitude/AmplitudeCore-Swift/commit/10437950c7dd2fc621e6bb2090eaf8182b0bad41))
+
 ## [1.4.10](https://github.com/amplitude/AmplitudeCore-Swift/compare/v1.4.9...v1.4.10) (2026-08-04)
 
 
