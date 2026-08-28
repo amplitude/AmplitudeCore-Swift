@@ -6,7 +6,7 @@ let package = Package(
     name: "AmplitudeCore",
     platforms: [
         .macOS(.v12),
-        .iOS(.v12),
+        .iOS(.v15),
         .tvOS(.v15),
         .watchOS(.v9),
         .visionOS(.v1),
