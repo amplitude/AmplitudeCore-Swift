@@ -25,9 +25,14 @@ jobs:
     name: Run Tests
     uses: ./.github/workflows/unit-test.yml
 
+  call-remote-config-e2e-tests:
+    name: Run E2E Tests
+    uses: ./.github/workflows/e2e-test.yml
+    secrets: inherit
+
   release:
     name: Release
-    needs: [authorize, run-tests]
+    needs: [authorize, run-tests, call-remote-config-e2e-tests]
     runs-on: macos-15
     steps:
       - name: Checkout
