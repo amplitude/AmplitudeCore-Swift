@@ -57,7 +57,7 @@ jobs:
 
       - name: Compute custom cache key
         id: compute-cache-key
-        run: echo "cache_key=$(xcodebuild -version | head -n 1 | tr -d ' ')-$(git -C swift-create-xcframework rev-parse HEAD)" >> $GITHUB_OUTPUT
+        run: echo "cache_key=$(xcodebuild -version | sed -n '1p' | tr -d ' ')-$(git -C swift-create-xcframework rev-parse HEAD)" >> $GITHUB_OUTPUT
 
       - name: Restore swift-create-xcframework Build cache
         uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
