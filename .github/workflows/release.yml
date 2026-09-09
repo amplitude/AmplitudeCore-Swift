@@ -52,7 +52,9 @@ jobs:
       - name: Checkout swift-create-xcframework
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
-          repository: segment-integrations/swift-create-xcframework
+          repository: amplitude/swift-create-xcframework
+          # Pin the privacy-manifest resource support merged in #6.
+          ref: 4a5fc8629e019e27d6413a82ddcc234a63c2721a
           path: swift-create-xcframework
 
       - name: Compute custom cache key
