@@ -1,3 +1,11 @@
+## [1.5.2](https://github.com/amplitude/AmplitudeCore-Swift/compare/v1.5.1...v1.5.2) (2026-09-09)
+
+
+### Bug Fixes
+
+* avoid broken pipe when computing cache key ([#101](https://github.com/amplitude/AmplitudeCore-Swift/issues/101)) ([c47ec00](https://github.com/amplitude/AmplitudeCore-Swift/commit/c47ec00486e1c9334007c8605543c543a8eb47a2))
+* use patched xcframework generator ([#100](https://github.com/amplitude/AmplitudeCore-Swift/issues/100)) ([ae3dfb7](https://github.com/amplitude/AmplitudeCore-Swift/commit/ae3dfb72eec421607f6c67d1e15399683dc0da93))
+
 ## [1.5.1](https://github.com/amplitude/AmplitudeCore-Swift/compare/v1.5.0...v1.5.1) (2026-08-28)
 
 
