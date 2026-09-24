@@ -21,6 +21,33 @@ final class RemoteConfigTests: XCTestCase {
     }()
 
     @available(macOS 10.15, iOS 13.0, watchOS 6.0, tvOS 13.0, *)
+    func testRequestsBrowserReplayKeysAndDeliversWebPrivacy() async throws {
+        let policy: RemoteConfigClient.RemoteConfig = [
+            "defaultMaskLevel": "conservative",
+            "blockSelector": [".secret"],
+            "urlMaskLevels": [["match": "https://example.com/*", "maskLevel": "light"]]
+        ]
+        let response: RemoteConfigClient.RemoteConfig = ["sessionReplay": ["sr_privacy_config": policy]]
+        TestRemoteConfigHandler.responseHandler = { request in
+            let keys = URLComponents(url: request.url!, resolvingAgainstBaseURL: false)?.queryItems?
+                .filter { $0.name == "config_keys" }.compactMap(\.value) ?? []
+            for key in ["sr_privacy_config", "sr_sampling_config", "sr_interaction_config", "sr_logging_config",
+                        "sr_targeting_config", "sr_ios_privacy_config", "sr_ios_sampling_config"] {
+                XCTAssertTrue(keys.contains("sessionReplay." + key))
+            }
+            return TestRemoteConfigHandler.successResponseHandler(response)(request)
+        }
+        let client = makeRemoteConfigClient()
+        let delivered = expectation(description: "web privacy delivered")
+        client.subscribe(key: "sessionReplay.sr_privacy_config", deliveryMode: .waitForRemote()) { config, source, _ in
+            XCTAssertEqual(source, .remote)
+            XCTAssertEqual(config as? NSDictionary, policy as NSDictionary)
+            delivered.fulfill()
+        }
+        await fulfillment(of: [delivered], timeout: 3)
+    }
+
+    @available(macOS 10.15, iOS 13.0, watchOS 6.0, tvOS 13.0, *)
     func testRequestsConfigAndUpdatesCache() async throws {
         let cachedConfig: RemoteConfigClient.RemoteConfig = ["cached": 1]
         let cachedConfigLastFetch = Date.distantPast

@@ -45,6 +45,11 @@ public actor RemoteConfigClient: NSObject {
         static let maxRetryDelay: TimeInterval = 8
         static let minTimeBetweenFetches: TimeInterval = 5 * 60
         static let fetchedKeys = [
+            "sessionReplay.sr_privacy_config",
+            "sessionReplay.sr_sampling_config",
+            "sessionReplay.sr_interaction_config",
+            "sessionReplay.sr_logging_config",
+            "sessionReplay.sr_targeting_config",
             "sessionReplay.sr_ios_privacy_config",
             "sessionReplay.sr_ios_sampling_config",
             "analyticsSDK.iosSDK",
