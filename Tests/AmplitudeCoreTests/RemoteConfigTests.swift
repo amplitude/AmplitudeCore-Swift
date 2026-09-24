@@ -21,7 +21,7 @@ final class RemoteConfigTests: XCTestCase {
     }()
 
     @available(macOS 10.15, iOS 13.0, watchOS 6.0, tvOS 13.0, *)
-    func testRequestsBrowserReplayKeysAndDeliversWebPrivacy() async throws {
+    func testRequestsWebPrivacyAndDeliversPolicy() async throws {
         let policy: RemoteConfigClient.RemoteConfig = [
             "defaultMaskLevel": "conservative",
             "blockSelector": [".secret"],
@@ -31,9 +31,11 @@ final class RemoteConfigTests: XCTestCase {
         TestRemoteConfigHandler.responseHandler = { request in
             let keys = URLComponents(url: request.url!, resolvingAgainstBaseURL: false)?.queryItems?
                 .filter { $0.name == "config_keys" }.compactMap(\.value) ?? []
-            for key in ["sr_privacy_config", "sr_sampling_config", "sr_interaction_config", "sr_logging_config",
-                        "sr_targeting_config", "sr_ios_privacy_config", "sr_ios_sampling_config"] {
+            for key in ["sr_privacy_config", "sr_ios_privacy_config", "sr_ios_sampling_config"] {
                 XCTAssertTrue(keys.contains("sessionReplay." + key))
+            }
+            for key in ["sr_sampling_config", "sr_interaction_config", "sr_logging_config", "sr_targeting_config"] {
+                XCTAssertFalse(keys.contains("sessionReplay." + key))
             }
             return TestRemoteConfigHandler.successResponseHandler(response)(request)
         }
