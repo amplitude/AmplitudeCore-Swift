@@ -17,7 +17,9 @@ class CrashCatcher {
         case consumed
     }
 
-    private static let fatalSignals: [Int32] = [SIGABRT, SIGILL, SIGSEGV, SIGFPE, SIGBUS, SIGPIPE, SIGTRAP]
+    // SIGPIPE is deliberately not handled: it only means a write hit a closed pipe/socket, apps commonly
+    // ignore it, and catching it would turn a recoverable EPIPE into a crash.
+    private static let fatalSignals: [Int32] = [SIGABRT, SIGILL, SIGSEGV, SIGFPE, SIGBUS, SIGTRAP]
     private static var previousSignalHandlers: [Int32: sigaction] = [:]
     private static var isRegistered = false
     private static let registrationLock = NSLock()
@@ -163,6 +165,13 @@ class CrashCatcher {
             var oldAction = sigaction()
 
             sigaction(signal, nil, &oldAction)
+
+            // Respect signals the app has chosen to ignore: installing a handler would make the
+            // kernel deliver them, and handleSignal terminates the process.
+            let oldHandlerPtr = unsafeBitCast(oldAction.__sigaction_u.__sa_handler, to: UInt.self)
+            if oldHandlerPtr == unsafeBitCast(SIG_IGN, to: UInt.self) {
+                continue
+            }
             previousSignalHandlers[signal] = oldAction
 
             action.__sigaction_u.__sa_sigaction = handleSignal
@@ -220,7 +229,6 @@ class CrashCatcher {
         SIGSEGV: "Fatal Signal: SIGSEGV",
         SIGFPE: "Fatal Signal: SIGFPE",
         SIGBUS: "Fatal Signal: SIGBUS",
-        SIGPIPE: "Fatal Signal: SIGPIPE",
         SIGTRAP: "Fatal Signal: SIGTRAP"
     ]
     private static let signalMarkerUNKNOWN: StaticString = "Fatal Signal: UNKNOWN"
