@@ -63,26 +63,44 @@ public enum JSONValue: Codable, Sendable {
         }
     }
 
-    // Helper to convert Any to JSONValue
+    /// Converts a Foundation or Swift value into a `JSONValue`.
+    ///
+    /// Numbers are classified by their Core Foundation type instead of Swift casts. A bridged
+    /// `NSNumber` (from `JSONSerialization`, Objective-C, or cross-platform bridges such as Flutter
+    /// and React Native) succeeds `as? Bool` for any `0` or `1` and `as? Int` for whole doubles,
+    /// so cast order alone cannot tell `1`, `1.0` and `true` apart.
+    ///
+    /// Returns `nil` for values JSON cannot represent, such as non-finite numbers or unsupported
+    /// types. Collections drop such elements.
     public static func from(_ value: Any) -> JSONValue? {
-        if let stringValue = value as? String {
-            return .string(stringValue)
-        } else if let boolValue = value as? Bool {
-            return .bool(boolValue)
-        } else if let intValue = value as? Int {
-            return .int(intValue)
-        } else if let doubleValue = value as? Double {
-            return .double(doubleValue)
-        } else if let floatValue = value as? Float {
-            return .double(Double(floatValue))
-        } else if let arrayValue = value as? [Any] {
-            let jsonValues = arrayValue.compactMap { JSONValue.from($0) }
-            return .array(jsonValues)
-        } else if let dictValue = value as? [String: Any] {
-            let jsonDict = dictValue.compactMapValues { JSONValue.from($0) }
-            return .dictionary(jsonDict)
+        switch value {
+        case let string as String:
+            return .string(string)
+        case let number as NSNumber:
+            return from(number: number)
+        case is NSNull:
+            return .null
+        case let array as [Any]:
+            return .array(array.compactMap { JSONValue.from($0) })
+        case let dictionary as [String: Any]:
+            return .dictionary(dictionary.compactMapValues { JSONValue.from($0) })
+        default:
+            return nil
         }
-        return nil
+    }
+
+    private static func from(number: NSNumber) -> JSONValue? {
+        if CFGetTypeID(number) == CFBooleanGetTypeID() {
+            return .bool(number.boolValue)
+        }
+        // NSDecimalNumber (and bridged Decimal) always reports a floating-point type,
+        // so keep its integral values as ints.
+        let isFloatingPoint = !(number is NSDecimalNumber) && CFNumberIsFloatType(number)
+        if !isFloatingPoint, let intValue = Int(exactly: number) {
+            return .int(intValue)
+        }
+        let doubleValue = number.doubleValue
+        return doubleValue.isFinite ? .double(doubleValue) : nil
     }
 
     // Helper to convert JSONValue back to Any
