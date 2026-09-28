@@ -1,3 +1,10 @@
+## [1.5.3](https://github.com/amplitude/AmplitudeCore-Swift/compare/v1.5.2...v1.5.3) (2026-09-28)
+
+
+### Bug Fixes
+
+* **crash-tracking:** stop overriding ignored signals and drop SIGPIPE ([#105](https://github.com/amplitude/AmplitudeCore-Swift/issues/105)) ([71375d6](https://github.com/amplitude/AmplitudeCore-Swift/commit/71375d654d7bbdc216bc179b192f0d3962c2a3b2))
+
 ## [1.5.2](https://github.com/amplitude/AmplitudeCore-Swift/compare/v1.5.1...v1.5.2) (2026-09-09)
 
 
