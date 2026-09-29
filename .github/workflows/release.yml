@@ -54,7 +54,7 @@ jobs:
         with:
           repository: amplitude/swift-create-xcframework
           # Includes privacy manifests, signature cleanup, and configurable framework versions.
-          ref: 6aea7e7caa7695c9d10dda7e711e9c8cfe8d345a
+          ref: 5450c11d4e3d468a19f0749e582a507f68478edd
           path: swift-create-xcframework
 
       - name: Compute custom cache key
