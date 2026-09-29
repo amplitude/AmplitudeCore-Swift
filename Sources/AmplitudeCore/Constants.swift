@@ -7,7 +7,7 @@
 
 struct Constants {
     static let SDK_LIBRARY = "amplitudecore-swift"
-    static let SDK_VERSION = "1.5.3"
+    static let SDK_VERSION = "1.5.4"
 
     struct RemoteConfig {
         struct Key {

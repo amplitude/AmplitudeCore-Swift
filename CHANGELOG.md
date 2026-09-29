@@ -1,3 +1,11 @@
+## [1.5.4](https://github.com/amplitude/AmplitudeCore-Swift/compare/v1.5.3...v1.5.4) (2026-09-29)
+
+
+### Bug Fixes
+
+* preserve numeric types in JSONValue.from ([#106](https://github.com/amplitude/AmplitudeCore-Swift/issues/106)) ([7d06e43](https://github.com/amplitude/AmplitudeCore-Swift/commit/7d06e431f8883231874f2da1174991d7dff3c9e8))
+* use config group vs specifying individual config keys ([#17](https://github.com/amplitude/AmplitudeCore-Swift/issues/17)) ([afcc126](https://github.com/amplitude/AmplitudeCore-Swift/commit/afcc126570afd47ba51a699f76dadcd30a64df84))
+
 ## [1.5.3](https://github.com/amplitude/AmplitudeCore-Swift/compare/v1.5.2...v1.5.3) (2026-09-28)
 
 
