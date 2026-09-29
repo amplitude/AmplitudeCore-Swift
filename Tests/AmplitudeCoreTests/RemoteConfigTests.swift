@@ -21,6 +21,25 @@ final class RemoteConfigTests: XCTestCase {
     }()
 
     @available(macOS 10.15, iOS 13.0, watchOS 6.0, tvOS 13.0, *)
+    func testRequestsIOSConfigGroup() async throws {
+        TestRemoteConfigHandler.responseHandler = { request in
+            let components = request.url.flatMap { URLComponents(url: $0, resolvingAgainstBaseURL: false) }
+            XCTAssertEqual(components?.queryItems, [URLQueryItem(name: "config_group", value: "ios")])
+            return TestRemoteConfigHandler.successResponseHandler()(request)
+        }
+
+        let remoteConfigClient = makeRemoteConfigClient()
+        let didReceiveConfigExpectation = XCTestExpectation(description: "it received the group config")
+        remoteConfigClient.subscribe { _, source, _ in
+            if source == .remote {
+                didReceiveConfigExpectation.fulfill()
+            }
+        }
+
+        await fulfillment(of: [didReceiveConfigExpectation], timeout: 3)
+    }
+
+    @available(macOS 10.15, iOS 13.0, watchOS 6.0, tvOS 13.0, *)
     func testRequestsConfigAndUpdatesCache() async throws {
         let cachedConfig: RemoteConfigClient.RemoteConfig = ["cached": 1]
         let cachedConfigLastFetch = Date.distantPast
