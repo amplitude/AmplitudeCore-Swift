@@ -9,7 +9,13 @@ import Foundation
 
 /// Internal utility to catch crashes and save crash reports to disk.
 ///
-/// **Registration Order:** For Crashlytics compatibility, call `register()` BEFORE `FirebaseApp.configure()`.
+/// `DiagnosticsClient` registers it once remote config enables crash tracking, so registration is
+/// asynchronous and its order relative to other crash reporters is not controllable. Handlers that
+/// were installed before us are chained. With Firebase Crashlytics (verified with 12.7 and 13.0) both
+/// reporters capture signal-delivered crashes such as `abort()` in either order. When Crashlytics
+/// registers first on a platform where it handles Mach exceptions (not tvOS), its Mach handler restores
+/// the signal handlers it saved at init, so Mach-delivered crashes (EXC_BAD_ACCESS, EXC_BREAKPOINT, ...)
+/// reach Crashlytics only.
 class CrashCatcher {
     private enum PreviousCrashState {
         case notDetected
@@ -212,13 +218,72 @@ class CrashCatcher {
             }
         }
 
-        // Reset to default and re-raise for proper termination
-        var defaultAction = sigaction()
-        defaultAction.__sigaction_u.__sa_handler = SIG_DFL
-        sigemptyset(&defaultAction.sa_mask)
-        defaultAction.sa_flags = 0
-        sigaction(sig, &defaultAction, nil)
-        raise(sig)
+        resetAndReraise(sig, context: context)
+    }
+
+    /// Replaces `SIG_DFL` in `resetAndReraise` so tests can observe the re-raised signal without dying.
+    nonisolated(unsafe) static var reraiseDispositionForTesting: sig_t?
+
+    /// Restores the default disposition for `sig` and re-raises it so that, in the common case, it is
+    /// delivered only after the current signal handler returns and the interrupted context is restored.
+    /// The process then terminates at the original crash site, and Apple's crash report points at the
+    /// real crash instead of this handler.
+    ///
+    /// The kernel blocks `sig` while its handler runs, which alone would keep the re-raised signal pending,
+    /// but a chained handler may have unblocked it (Firebase Crashlytics unblocks every signal), so block
+    /// it explicitly and send it to this thread only.
+    ///
+    /// Exceptions:
+    /// - If the context we return to keeps `sig` blocked (e.g. the thread was interrupted in `sigsuspend()`),
+    ///   or there is no context to tell, a pending signal might never be delivered, so deliver it right away.
+    /// - Non-killable GCD worker threads reject `pthread_kill`. A hardware fault that is re-executed on
+    ///   return (see `isReplayedOnReturn`) faults again on this thread; anything else is sent to the
+    ///   process (as `raise()` would), which can end up terminating on another thread.
+    ///
+    /// Don't replace this with a plain `return`: a signal sent by `raise()` or `kill()` is not re-delivered,
+    /// so the app would keep running. And never return with our handler still installed: a hardware fault
+    /// would loop forever.
+    static func resetAndReraise(_ sig: Int32, context: UnsafeMutableRawPointer?) {
+        var action = sigaction()
+        action.__sigaction_u.__sa_handler = reraiseDispositionForTesting ?? SIG_DFL
+        sigemptyset(&action.sa_mask)
+        action.sa_flags = 0
+        sigaction(sig, &action, nil)
+
+        var mask = sigset_t()
+        sigemptyset(&mask)
+        sigaddset(&mask, sig)
+
+        var canDefer = false
+        if let context {
+            var restoredMask = context.assumingMemoryBound(to: ucontext_t.self).pointee.uc_sigmask
+            canDefer = sigismember(&restoredMask, sig) == 0
+        }
+        if !canDefer {
+            pthread_sigmask(SIG_UNBLOCK, &mask, nil)
+            raise(sig)
+            return
+        }
+
+        pthread_sigmask(SIG_BLOCK, &mask, nil)
+        if pthread_kill(pthread_self(), sig) == 0 || isReplayedOnReturn(sig) {
+            return
+        }
+        kill(getpid(), sig)
+    }
+
+    /// Whether a hardware-generated `sig` fires again once the handler returns, because the faulting
+    /// instruction is re-executed. Not true for x86 `int3` (the PC is already past it), nor for SIGFPE on
+    /// arm64, where integer division doesn't trap. Signals sent by `raise()`/`kill()` never fire again,
+    /// and nothing in the siginfo tells them apart, so a software SIGSEGV/SIGBUS/SIGILL (or arm64 SIGTRAP)
+    /// that lands on a non-killable GCD worker is not re-delivered. That needs every other thread to
+    /// block it.
+    private static func isReplayedOnReturn(_ sig: Int32) -> Bool {
+#if arch(x86_64)
+        return sig == SIGSEGV || sig == SIGBUS || sig == SIGILL || sig == SIGFPE
+#else
+        return sig == SIGSEGV || sig == SIGBUS || sig == SIGILL || sig == SIGTRAP
+#endif
     }
 
     // MARK: - Crash Report Writing
