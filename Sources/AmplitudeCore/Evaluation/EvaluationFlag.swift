@@ -154,6 +154,26 @@ extension EvaluationSegment {
     }
 }
 
+extension EvaluationCondition {
+
+    enum CodingKeys: CodingKey {
+        case selector
+        case op
+        case values
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.selector = try container.decode([String].self, forKey: .selector)
+        self.op = try container.decode(String.self, forKey: .op)
+        self.values = try container.decode(Set<String>.self, forKey: .values)
+        // Without a selector the condition reads a missing property, so negated operators would match everyone.
+        if selector.isEmpty {
+            throw DecodingError.dataCorruptedError(forKey: .selector, in: container, debugDescription: "Empty selector")
+        }
+    }
+}
+
 extension EvaluationVariant {
 
     enum CodingKeys: CodingKey {

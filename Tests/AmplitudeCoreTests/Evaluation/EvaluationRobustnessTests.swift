@@ -32,6 +32,7 @@ final class EvaluationRobustnessTests: XCTestCase {
             "values not an array": valid.merging(["values": "A"]) { $1 },
             "number in values": valid.merging(["values": [9.99]]) { $1 },
             "selector not an array": valid.merging(["selector": "context.event_types"]) { $1 },
+            "empty selector": valid.merging(["selector": [String]()]) { $1 },
             "missing op": valid.filter { $0.key != "op" },
             "op not a string": valid.merging(["op": 1]) { $1 },
         ]
