@@ -58,11 +58,20 @@ final class JavaScriptNumberTests: XCTestCase {
         XCTAssertEqual(JavaScriptNumber.string(UInt64.max as NSNumber), "18446744073709552000")
         XCTAssertEqual(JavaScriptNumber.string(CGFloat(4.5) as NSNumber), "4.5")
         XCTAssertEqual(JavaScriptNumber.string(NSDecimalNumber(string: "6.5")), "6.5")
+        // `doubleValue` would give 19.990000000000002, 0.7290000000000001 and 5.497999999999999.
+        for decimal in ["19.99", "0.729", "5.498"] {
+            XCTAssertEqual(JavaScriptNumber.string(NSDecimalNumber(string: decimal)), decimal)
+            XCTAssertEqual(JavaScriptNumber.string(Decimal(string: decimal)! as NSDecimalNumber), decimal)
+        }
+        XCTAssertEqual(JavaScriptNumber.string(NSDecimalNumber.notANumber), "NaN")
         XCTAssertEqual(JavaScriptNumber.string(true as NSNumber), "true")
         XCTAssertEqual(JavaScriptNumber.string(NSNumber(value: false)), "false")
 
         // Numbers arriving through JSON, as from Flutter or React Native.
         let json = try XCTUnwrap(try JSONSerialization.jsonObject(with: Data(#"[9.99, 1.0, 1, 0.1, true]"#.utf8)) as? [NSNumber])
         XCTAssertEqual(json.map(JavaScriptNumber.string), ["9.99", "1", "1", "0.1", "true"])
+        // JSONSerialization returns NSDecimalNumber for mantissas beyond 17 digits.
+        let long = try XCTUnwrap(try JSONSerialization.jsonObject(with: Data("[0.1234567890123456789]".utf8)) as? [NSNumber])
+        XCTAssertEqual(long.map(JavaScriptNumber.string), ["0.12345678901234568"])
     }
 }

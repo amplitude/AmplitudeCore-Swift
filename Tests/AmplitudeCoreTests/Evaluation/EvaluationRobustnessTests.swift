@@ -100,7 +100,7 @@ final class EvaluationRobustnessTests: XCTestCase {
 
     func testUnrepresentableValuesDoNotCrash() throws {
         let values: [Any] = [Date(), Data([1]), URL(string: "https://amplitude.com")!, NSObject(),
-                             ["when": Date()], ["ratio": Double.nan]]
+                             ["when": Date()], [Date()]]
         for value in values {
             for op in ["is", "is not", "contains", "set contains", "greater", "regex match"] {
                 let flag = try conditionFlag(op, ["x"])
@@ -121,11 +121,18 @@ final class EvaluationRobustnessTests: XCTestCase {
             (0.1, "0.1"), (9.99, "9.99"), (1.0, "1"), (-0.0, "0"), (1e21, "1e+21"), (1e-7, "1e-7"),
             (Float(0.1), "0.1"), (NSDecimalNumber(string: "6.5"), "6.5"), (Int64(1) << 53, "9007199254740992"),
             (Int64.max, "9223372036854776000"), (Double.nan, "NaN"), (-Double.infinity, "-Infinity"),
-            (true, "true"),
+            (true, "true"), (Decimal(string: "19.99")!, "19.99"),
         ]
         for (value, string) in cases {
             XCTAssertEqual(evaluate(try conditionFlag("is", [string]), properties(["p": value])), "on", "\(value)")
         }
+    }
+
+    func testDecimalsDoNotPickUpBinaryRoundingErrors() throws {
+        // Decimal's doubleValue is 19.990000000000002, which would be "greater" than 19.99.
+        let price = Decimal(string: "19.99")!
+        XCTAssertEqual(evaluate(try conditionFlag("greater", ["19.99"]), properties(["p": price])), "off")
+        XCTAssertEqual(evaluate(try conditionFlag("less or equal", ["19.99"]), properties(["p": price])), "on")
     }
 
     func testNumbersFromJSONAndInArrays() throws {
@@ -149,9 +156,22 @@ final class EvaluationRobustnessTests: XCTestCase {
         XCTAssertEqual(evaluate(try conditionFlag("is", [""]), properties(["p": ""])), "on")
     }
 
-    func testObjectsStringifyWithoutEscapingSlashes() throws {
-        let flag = try conditionFlag("contains", ["https://amplitude.com/a"])
-        XCTAssertEqual(evaluate(flag, properties(["p": ["url": "https://amplitude.com/a"]])), "on")
+    func testObjectsStringifyLikeJavaScript() throws {
+        // Expected strings are JS `JSON.stringify` of the same values.
+        let cases: [(Any, String)] = [
+            (["n": 0.1], #"{"n":0.1}"#),
+            (["ratio": Double.nan], #"{"ratio":null}"#),
+            (["q": "a\"b\\c\n\u{01}/"], #"{"q":"a\"b\\c\n\u0001/"}"#),
+            (["a": true, "b": NSNull(), "c": [1, "x"]] as [String: Any], #"{"a":true,"b":null,"c":[1,"x"]}"#),
+            (["big": Int64.max], #"{"big":9223372036854776000}"#),
+        ]
+        for (value, json) in cases {
+            XCTAssertEqual(evaluate(try conditionFlag("is", [json]), properties(["p": value])), "on", json)
+        }
+        XCTAssertEqual(evaluate(try conditionFlag("set is", ["[0.1]"]), properties(["p": [[0.1]]])), "on")
+        // "/" is not escaped, on every OS version.
+        XCTAssertEqual(evaluate(try conditionFlag("contains", ["https://amplitude.com/a"]),
+                                properties(["p": ["url": "https://amplitude.com/a"]])), "on")
     }
 
     // MARK: - Helpers

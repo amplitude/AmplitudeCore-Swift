@@ -282,23 +282,68 @@ public class EvaluationEngine {
             // As JS `String(value)`, so that 0.1 matches "0.1" rather than "0.10000000000000001".
             return JavaScriptNumber.string(number)
         default:
-            // Arrays and dictionaries become JSON, as with JS `JSON.stringify`. JSONSerialization raises an
-            // uncatchable exception on values JSON cannot represent, such as Date, so those have no string form.
-            guard JSONSerialization.isValidJSONObject(value),
-                  let jsonData = try? JSONSerialization.data(withJSONObject: value, options: Self.jsonWritingOptions) else {
-                return nil
-            }
-            return String(data: jsonData, encoding: .utf8)
+            // Arrays and dictionaries become JSON, as with JS `JSON.stringify`. Values JSON cannot represent, such
+            // as Date, have no string form.
+            return javaScriptJSON(value: value)
         }
     }
 
-    private static let jsonWritingOptions: JSONSerialization.WritingOptions = {
-        if #available(macOS 10.15, iOS 13.0, tvOS 13.0, watchOS 6.0, *) {
-            // JS does not escape "/".
-            return [.withoutEscapingSlashes]
+    /// JSON text as JS `JSON.stringify` writes it: numbers as JS `String()`, non-finite numbers as null, "/" not
+    /// escaped. Dictionaries have no order, so keys are sorted where JS would keep insertion order. Returns nil when
+    /// the value contains something JSON cannot represent. JSONSerialization is not used: it prints 0.1 as
+    /// 0.10000000000000001, escapes "/" before iOS 13, and raises an uncatchable exception on such values.
+    private func javaScriptJSON(value: Any) -> String? {
+        switch value {
+        case let string as String:
+            return javaScriptJSONString(string)
+        case is NSNull:
+            return "null"
+        case let number as NSNumber:
+            if CFGetTypeID(number) != CFBooleanGetTypeID() && !number.doubleValue.isFinite {
+                return "null"
+            }
+            return JavaScriptNumber.string(number)
+        case let array as NSArray:
+            var elements: [String] = []
+            for element in array {
+                guard let json = javaScriptJSON(value: element) else {
+                    return nil
+                }
+                elements.append(json)
+            }
+            return "[" + elements.joined(separator: ",") + "]"
+        case let dictionary as NSDictionary:
+            var members: [(key: String, json: String)] = []
+            for (key, element) in dictionary {
+                guard let key = key as? String, let json = javaScriptJSON(value: element) else {
+                    return nil
+                }
+                members.append((key, json))
+            }
+            members.sort { $0.key < $1.key }
+            return "{" + members.map { javaScriptJSONString($0.key) + ":" + $0.json }.joined(separator: ",") + "}"
+        default:
+            return nil
         }
-        return []
-    }()
+    }
+
+    private func javaScriptJSONString(_ string: String) -> String {
+        var result = "\""
+        for scalar in string.unicodeScalars {
+            switch scalar {
+            case "\"": result += "\\\""
+            case "\\": result += "\\\\"
+            case "\u{08}": result += "\\b"
+            case "\u{0C}": result += "\\f"
+            case "\n": result += "\\n"
+            case "\r": result += "\\r"
+            case "\t": result += "\\t"
+            case _ where scalar.value < 0x20: result += String(format: "\\u%04x", scalar.value)
+            default: result.unicodeScalars.append(scalar)
+            }
+        }
+        return result + "\""
+    }
 
     private func coerceStringList(value: Any?) -> Set<String>? {
         guard let value else {
@@ -310,6 +355,10 @@ public class EvaluationEngine {
         }
         if let sequence = value as? [Any?] {
             return sequenceToSet(sequence: sequence)
+        }
+        // A dictionary is never a list (JS: `String(object)` is "[object Object]"); skip serializing it here.
+        if value is NSDictionary {
+            return nil
         }
         // Parse the string value as a json array and convert to a set of strings
         // or return nil if the string could not be parsed as a json array.

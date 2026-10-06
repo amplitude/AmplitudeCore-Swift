@@ -17,11 +17,16 @@ enum JavaScriptNumber {
         if CFGetTypeID(number) == CFBooleanGetTypeID() {
             return number.boolValue ? "true" : "false"
         }
-        if number is NSDecimalNumber {
-            return string(number.doubleValue)
+        if let decimal = number as? NSDecimalNumber {
+            // `doubleValue` is not correctly rounded (19.99 becomes 19.990000000000002); parsing the decimal's own
+            // digits is. `stringValue` always uses "." as the separator.
+            return string(Double(decimal.stringValue) ?? decimal.doubleValue)
         }
         switch CFNumberGetType(number) {
         case .float32Type, .floatType:
+            // JS has no Float. Keep the Float's own shortest digits (0.1, not 0.10000000149011612): Amplitude-Swift
+            // uploads a Float with JSONEncoder, which writes the same digits, so they are what a customer sees in
+            // Amplitude and copies into a rule.
             return string(number.floatValue)
         case .float64Type, .doubleType, .cgFloatType:
             return string(number.doubleValue)
