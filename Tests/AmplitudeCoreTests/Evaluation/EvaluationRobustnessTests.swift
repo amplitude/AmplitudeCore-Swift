@@ -142,6 +142,21 @@ final class EvaluationRobustnessTests: XCTestCase {
         XCTAssertEqual(evaluate(try conditionFlag("set is", ["0.1", "1"]), properties(["p": json["tags"] as Any])), "on")
     }
 
+    func testNumericOperatorsNeverMatchNonNumbers() throws {
+        // Comparing strings instead would put letters above digits: "N/A" greater 100.
+        for value in ["N/A", "unknown", "abc"] as [Any] + [true] {
+            XCTAssertEqual(evaluate(try conditionFlag("greater", ["100"]), properties(["p": value])), "off", "\(value)")
+            XCTAssertEqual(evaluate(try conditionFlag("greater or equal", ["0"]), properties(["p": value])), "off", "\(value)")
+        }
+        XCTAssertEqual(evaluate(try conditionFlag("less", ["abc"]), properties(["p": 5])), "off")
+        XCTAssertEqual(evaluate(try conditionFlag("greater", ["2026-01-01"]), properties(["p": "2026-10-06"])), "off")
+        XCTAssertEqual(evaluate(try conditionFlag("greater", ["NaN"]), properties(["p": "NaN"])), "off")
+        // Filter values that are not numbers are skipped; the others still compare.
+        XCTAssertEqual(evaluate(try conditionFlag("greater", ["abc", "10"]), properties(["p": 12])), "on")
+        // Version operators still fall back to comparing strings when a value is not a version.
+        XCTAssertEqual(evaluate(try conditionFlag("version greater", ["abc"]), properties(["p": "abd"])), "on")
+    }
+
     func testNumericComparisonsIgnoreSurroundingWhitespace() throws {
         XCTAssertEqual(evaluate(try conditionFlag("greater", ["10"]), properties(["p": " 12\n"])), "on")
         XCTAssertEqual(evaluate(try conditionFlag("less", [" 20 "]), properties(["p": 12])), "on")

@@ -181,9 +181,7 @@ public class EvaluationEngine {
         case EvaluationOperator.CONTAINS: return matchesContains(propValue: propValue, filterValues: filterValues)
         case EvaluationOperator.DOES_NOT_CONTAIN: return !matchesContains(propValue: propValue, filterValues: filterValues)
         case EvaluationOperator.LESS_THAN, EvaluationOperator.LESS_THAN_EQUALS, EvaluationOperator.GREATER_THAN, EvaluationOperator.GREATER_THAN_EQUALS:
-            return matchesComparable(propValue: propValue, op: op, filterValues: filterValues) { value in
-                return self.parseDouble(value: value)
-            }
+            return matchesNumber(propValue: propValue, op: op, filterValues: filterValues)
         case EvaluationOperator.VERSION_LESS_THAN, EvaluationOperator.VERSION_LESS_THAN_EQUALS, EvaluationOperator.VERSION_GREATER_THAN, EvaluationOperator.VERSION_GREATER_THAN_EQUALS:
             return matchesComparable(propValue: propValue, op: op, filterValues: filterValues) { value in
                 return SemanticVersion.parse(version: value)
@@ -215,6 +213,21 @@ public class EvaluationEngine {
             return true
         }
         return false
+    }
+
+    /// Numeric operators compare numbers only: a value that is not a number never matches, as in JS, where it
+    /// becomes NaN. Falling back to comparing strings, as the version operators do, would make "N/A" greater
+    /// than 100, since letters sort after digits.
+    private func matchesNumber(propValue: String, op: String, filterValues: Set<String>) -> Bool {
+        guard let propNumber = parseDouble(value: propValue) else {
+            return false
+        }
+        return filterValues.contains { filterValue in
+            guard let filterNumber = parseDouble(value: filterValue) else {
+                return false
+            }
+            return matchesComparable(propValue: propNumber, op: op, filterValue: filterNumber)
+        }
     }
 
     private func matchesComparable<T: Comparable>(propValue: String, op: String, filterValues: Set<String>, transformer: (String) -> T?) -> Bool {
