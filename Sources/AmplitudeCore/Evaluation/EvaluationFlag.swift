@@ -51,7 +51,8 @@ public struct EvaluationVariant: Codable, Selectable {
     public let key: String?
     let value: Any?
     let payload: Any?
-    let metadata: [String: Any?]?
+    /// The flag's, the matched segment's and the variant's metadata, merged in that order.
+    public let metadata: [String: Any?]?
 }
 
 internal class EvaluationOperator {

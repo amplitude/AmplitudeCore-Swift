@@ -96,6 +96,35 @@ final class EvaluationTargetingTests: XCTestCase {
         XCTAssertEqual(evaluate(try conditionFlag([(property("ratio"), "less", ["1"])]), bridged), "on")
     }
 
+    // MARK: - Result metadata
+
+    func testResultCarriesTheMatchedSegmentsMetadata() throws {
+        // Shaped as the SR config service generates it: every segment names itself in its metadata.
+        let flag = try decodeFlag(#"""
+        {"key": "sr_ios_targeting_config", "metadata": {"evaluationMode": "local"},
+         "variants": {"on": {"key": "on"}, "off": {"key": "off"}},
+         "segments": [
+           {"metadata": {"segmentName": "signup", "segmentId": "uuid1"},
+            "conditions": [[{"selector": ["context", "event", "event_type"], "op": "is", "values": ["Signup Started"]}]],
+            "variant": "on"},
+           {"metadata": {"segmentName": "default random sample", "segmentId": "__internal_random_sample__"},
+            "variant": "on"},
+           {"variant": "off"}]}
+        """#)
+        let condition = engine.evaluate(context: context(eventType: "Signup Started"), flags: [flag])["sr_ios_targeting_config"]
+        XCTAssertEqual(metadata(condition, "segmentId"), "uuid1")
+        XCTAssertEqual(metadata(condition, "segmentName"), "signup")
+        // Flag metadata is merged in as well.
+        XCTAssertEqual(metadata(condition, "evaluationMode"), "local")
+
+        let randomSample = engine.evaluate(context: context(eventType: "Search"), flags: [flag])["sr_ios_targeting_config"]
+        XCTAssertEqual(metadata(randomSample, "segmentId"), "__internal_random_sample__")
+    }
+
+    private func metadata(_ variant: EvaluationVariant?, _ key: String) -> String? {
+        return variant?.metadata?[key] as? String
+    }
+
     // MARK: - Web targeting config
 
     /// `flagConfig` from Amplitude-TypeScript `packages/session-replay-browser/test/flag-config-data.ts`.
