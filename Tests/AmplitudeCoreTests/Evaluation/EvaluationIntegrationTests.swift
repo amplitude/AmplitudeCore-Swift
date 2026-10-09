@@ -327,7 +327,7 @@ class EvaluationIntegrationTests: XCTestCase {
 
     func testIsNot() {
         let user = userContext(userProperties: ["key": "value"])
-        let result = engine.evaluate(context: user, flags: flags)["test-is"]
+        let result = engine.evaluate(context: user, flags: flags)["test-is-not"]
         XCTAssertEqual("on", result?.key)
     }
 

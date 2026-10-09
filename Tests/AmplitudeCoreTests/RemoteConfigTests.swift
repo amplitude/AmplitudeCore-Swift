@@ -509,7 +509,7 @@ final class RemoteConfigTests: XCTestCase {
             "int": 42,
             "double": 3.14159,
             "float": Float(2.71828),
-            "big": 9_223_372_036_854_775_807, // Int64.max
+            "big": Int64.max,
         ]
         try await verifyRemoteConfig(input: mixedNumbers, expected: mixedNumbers)
 
