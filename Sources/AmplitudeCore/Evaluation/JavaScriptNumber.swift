@@ -17,26 +17,17 @@ enum JavaScriptNumber {
         if CFGetTypeID(number) == CFBooleanGetTypeID() {
             return number.boolValue ? "true" : "false"
         }
-        if let decimal = number as? NSDecimalNumber {
-            // `doubleValue` is not correctly rounded (19.99 becomes 19.990000000000002); parsing the decimal's own
-            // digits is. `stringValue` always uses "." as the separator.
-            return string(Double(decimal.stringValue) ?? decimal.doubleValue)
+        if number is NSDecimalNumber || CFNumberIsFloatType(number) {
+            // JS has no Float or Decimal. Keep the digits they are written with (0.1, not 0.10000000149011612):
+            // Amplitude-Swift uploads them with JSONEncoder, which writes the same digits, so they are what a
+            // customer sees in Amplitude and copies into a rule.
+            return string(number.digitPreservingDoubleValue)
         }
-        switch CFNumberGetType(number) {
-        case .float32Type, .floatType:
-            // JS has no Float. Keep the Float's own shortest digits (0.1, not 0.10000000149011612): Amplitude-Swift
-            // uploads a Float with JSONEncoder, which writes the same digits, so they are what a customer sees in
-            // Amplitude and copies into a rule.
-            return string(number.floatValue)
-        case .float64Type, .doubleType, .cgFloatType:
-            return string(number.doubleValue)
-        default:
-            // JavaScript numbers are doubles, so integers beyond 2^53 print rounded there.
-            if let value = Int64(exactly: number), value.magnitude <= 1 << 53 {
-                return String(value)
-            }
-            return string(number.doubleValue)
+        // JavaScript numbers are doubles, so integers beyond 2^53 print rounded there.
+        if let value = Int64(exactly: number), value.magnitude <= 1 << 53 {
+            return String(value)
         }
+        return string(number.doubleValue)
     }
 
     /// Formats a number like JavaScript's `Number.prototype.toString()`, using the shortest digits that round-trip

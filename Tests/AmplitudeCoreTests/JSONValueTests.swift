@@ -39,6 +39,15 @@ final class JSONValueTests: XCTestCase {
         XCTAssertEqual(describe(JSONValue.from(CGFloat(4.5))), "double(4.5)")
     }
 
+    func testFloatsAndDecimalsKeepTheirDigits() throws {
+        XCTAssertEqual(describe(JSONValue.from(Float(0.1))), "double(0.1)")
+        XCTAssertEqual(describe(JSONValue.from(Float(1e-7))), "double(1e-07)")
+        XCTAssertEqual(describe(JSONValue.from(try XCTUnwrap(Decimal(string: "19.99")))), "double(19.99)")
+        XCTAssertEqual(describe(JSONValue.from(NSDecimalNumber(string: "1e30"))), "double(1e+30)")
+        XCTAssertNil(JSONValue.from(Float.nan))
+        XCTAssertNil(JSONValue.from(NSDecimalNumber.notANumber))
+    }
+
     // MARK: - Bridged numbers
 
     func testBridgedNumbersAreNotBooleans() {
@@ -108,6 +117,11 @@ final class JSONValueTests: XCTestCase {
         ]
         XCTAssertTrue(try encodedProperties(properties).contains(
             #""event_properties":{"code":413,"count":2,"events":["a","b"],"message":"Payload Too Large"}"#))
+    }
+
+    func testDiagnosticsEventKeepsTheDigitsOfFloatsAndDecimals() throws {
+        let properties: [String: any Sendable] = ["ratio": Float(0.1), "price": try XCTUnwrap(Decimal(string: "19.99"))]
+        XCTAssertTrue(try encodedProperties(properties).contains(#""event_properties":{"price":19.99,"ratio":0.1}"#))
     }
 
     func testDiagnosticsEventWithNonFiniteNumberStillEncodes() throws {
