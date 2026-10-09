@@ -8,7 +8,7 @@
 
 import Foundation
 
-internal struct SemanticVersion: Comparable {
+struct SemanticVersion: Comparable {
     
     private static let MAJOR_MINOR_REGEX = "(\\d+)\\.(\\d+)"
     private static let PATCH_REGEX = "(\\d+)"

@@ -13,35 +13,34 @@ public struct EvaluationFlag: Codable {
     let key: String
     let variants: [String: EvaluationVariant]
     let segments: [EvaluationSegment]
-    let dependencies: [String]?
     let metadata: [String: Any?]?
 }
 
-internal struct EvaluationSegment: Codable {
+struct EvaluationSegment: Codable {
     let bucket: EvaluationBucket?
     let conditions: [[EvaluationCondition]]?
     let variant: String?
     let metadata: [String: Any?]?
 }
 
-internal struct EvaluationBucket: Codable {
+struct EvaluationBucket: Codable {
     let selector: [String]
     let salt: String
     let allocations: [EvaluationAllocation]
 }
 
-internal struct EvaluationCondition: Codable {
+struct EvaluationCondition: Codable {
     let selector: [String]
     let op: String
     let values: Set<String>
 }
 
-internal struct EvaluationAllocation: Codable {
+struct EvaluationAllocation: Codable {
     let range: [Int]
     let distributions: [EvaluationDistribution]
 }
 
-internal struct EvaluationDistribution: Codable {
+struct EvaluationDistribution: Codable {
     let variant: String
     let range: [Int]
 }
@@ -55,7 +54,7 @@ public struct EvaluationVariant: Codable, Selectable {
     public let metadata: [String: Any?]?
 }
 
-internal class EvaluationOperator {
+class EvaluationOperator {
     static let IS = "is"
     static let IS_NOT = "is not"
     static let CONTAINS = "contains"
@@ -80,7 +79,7 @@ internal class EvaluationOperator {
 
 // Selectable Extensions
 
-internal extension EvaluationVariant {
+extension EvaluationVariant {
     
     func select(selector: String) -> Any? {
         switch selector {
@@ -101,7 +100,6 @@ extension EvaluationFlag {
         case key
         case variants
         case segments
-        case dependencies
         case metadata
     }
     
@@ -110,7 +108,6 @@ extension EvaluationFlag {
         self.key = try container.decode(String.self, forKey: .key)
         self.variants = try container.decode([String: EvaluationVariant].self, forKey: .variants)
         self.segments = try container.decode([EvaluationSegment].self, forKey: .segments)
-        self.dependencies = try? container.decode([String].self, forKey: .dependencies)
         let metadata = try? container.decode([String: AnyDecodable].self, forKey: .metadata)
         self.metadata = metadata?.mapValues { anyDecodable in anyDecodable.value }
     }
@@ -120,14 +117,13 @@ extension EvaluationFlag {
         try container.encode(key, forKey: .key)
         try container.encode(variants, forKey: .variants)
         try container.encode(segments, forKey: .segments)
-        try? container.encodeIfPresent(dependencies, forKey: .dependencies)
         if let metadata = metadata {
             try? container.encodeIfPresent(AnyEncodable(metadata), forKey: .metadata)
         }
     }
 }
 
-internal extension EvaluationSegment {
+extension EvaluationSegment {
     
     enum CodingKeys: CodingKey {
         case bucket
@@ -186,22 +182,5 @@ extension EvaluationVariant {
         if let metadata = metadata {
             try? container.encodeIfPresent(AnyEncodable(metadata), forKey: .metadata)
         }
-    }
-}
-
-// Utility Extensions
-
-internal extension EvaluationFlag {
-    func isLocalEvaluationMode() -> Bool {
-        if let evaluationMode = self.metadata?["evaluationMode"] as? String, evaluationMode == "local" {
-            return true
-        }
-        return false
-    }
-    func isRemoteEvaluationMode() -> Bool {
-        if let evaluationMode = self.metadata?["evaluationMode"] as? String, evaluationMode == "remote" {
-            return true
-        }
-        return false
     }
 }

@@ -94,7 +94,6 @@ private func flagWithCondition(op: String, values: Set<String>) -> EvaluationFla
                 metadata: nil
             )
         ],
-        dependencies: nil,
         metadata: nil
     )
 }

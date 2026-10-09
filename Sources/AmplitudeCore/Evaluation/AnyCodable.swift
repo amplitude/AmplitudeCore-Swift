@@ -8,7 +8,7 @@
 
 import Foundation
 
-internal struct AnyDecodable: Decodable {
+struct AnyDecodable: Decodable {
     
     let value: Any?
 
@@ -45,7 +45,7 @@ internal struct AnyDecodable: Decodable {
     }
 }
 
-internal struct AnyEncodable: Encodable {
+struct AnyEncodable: Encodable {
     
     let value: Any
 

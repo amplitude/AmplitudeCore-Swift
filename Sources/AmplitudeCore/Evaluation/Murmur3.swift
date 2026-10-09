@@ -15,13 +15,13 @@ private let R2_32: UInt32 = 13
 private let M_32: UInt32 = 5
 private let N_32: UInt32 = UInt32(bitPattern: -0x19ab949c)
 
-internal extension String {
+extension String {
     func murmurHash32x86(seed: Int) -> UInt32? {
         self.data(using: .utf8)?.murmurHash32x86(seed: seed)
     }
 }
 
-internal extension Data {
+extension Data {
     
     func murmurHash32x86(seed: Int) -> UInt32 {
         let length = self.count

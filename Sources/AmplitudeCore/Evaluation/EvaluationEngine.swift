@@ -110,7 +110,6 @@ public class EvaluationEngine {
     }
     
     private func bucket(target: EvaluationTarget, segment: EvaluationSegment) -> String? {
-        // TODO: Implement
         guard let segmentBucket = segment.bucket else {
             // A null bucket means the segment is fully rolled out. Select the default variant.
             return segment.variant

@@ -8,7 +8,7 @@
 
 import Foundation
 
-internal protocol Selectable {
+protocol Selectable {
     func select(selector: String) -> Any?
 }
 
@@ -24,7 +24,7 @@ extension Dictionary: Selectable where Key == String {
     }
 }
 
-internal extension Selectable {
+extension Selectable {
     func select(selector: [String?]?) -> Any? {
         guard let selector = selector else {
             return nil
