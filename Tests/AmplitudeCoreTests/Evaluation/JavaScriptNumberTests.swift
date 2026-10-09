@@ -63,8 +63,9 @@ final class JavaScriptNumberTests: XCTestCase {
     }
 
     func testFloatsUseTheirOwnShortestDigits() {
-        XCTAssertEqual(JavaScriptNumber.string(Float(0.1)), "0.1")
         XCTAssertEqual(JavaScriptNumber.string(Float(0.1) as NSNumber), "0.1")
+        XCTAssertEqual(JavaScriptNumber.string(Float(1e-7) as NSNumber), "1e-7")
+        XCTAssertEqual(JavaScriptNumber.string(Float(16_777_216) as NSNumber), "16777216")
     }
 
     func testNumbersByType() throws {

@@ -101,9 +101,7 @@ public final class EvaluationEngine: Sendable {
     }
 
     private func getHash(key: String) -> Int64 {
-        let data = key.data(using: .utf8) ?? Data()
-        let hash = data.murmurHash32x86(seed: 0)
-        return Int64(hash) & 0xffffffff
+        return Int64(Hash.murmur3x86_32(key))
     }
 
     private func bucket(target: EvaluationTarget, segment: EvaluationSegment) -> String? {
@@ -183,9 +181,7 @@ public final class EvaluationEngine: Sendable {
         case EvaluationOperator.LESS_THAN, EvaluationOperator.LESS_THAN_EQUALS, EvaluationOperator.GREATER_THAN, EvaluationOperator.GREATER_THAN_EQUALS:
             return matchesNumber(propValue: propValue, op: op, filterValues: filterValues)
         case EvaluationOperator.VERSION_LESS_THAN, EvaluationOperator.VERSION_LESS_THAN_EQUALS, EvaluationOperator.VERSION_GREATER_THAN, EvaluationOperator.VERSION_GREATER_THAN_EQUALS:
-            return matchesComparable(propValue: propValue, op: op, filterValues: filterValues) { value in
-                return SemanticVersion.parse(version: value)
-            }
+            return matchesVersion(propValue: propValue, op: op, filterValues: filterValues)
         case EvaluationOperator.REGEX_MATCH: return matchesRegex(propValue: propValue, filterValues: filterValues)
         case EvaluationOperator.REGEX_DOES_NOT_MATCH: return !matchesRegex(propValue: propValue, filterValues: filterValues)
         default: return false
@@ -230,17 +226,17 @@ public final class EvaluationEngine: Sendable {
         }
     }
 
-    private func matchesComparable<T: Comparable>(propValue: String, op: String, filterValues: Set<String>, transformer: (String) -> T?) -> Bool {
-        let filterValuesTransformed = filterValues.compactMap(transformer)
-        guard let propValueTransformed = transformer(propValue), !filterValuesTransformed.isEmpty else {
-            // If the prop value or none of the filter values transform, fall
-            // back on string comparison.
+    /// Version operators compare semantic versions, and fall back to comparing strings when the property or every
+    /// filter value is not a version.
+    private func matchesVersion(propValue: String, op: String, filterValues: Set<String>) -> Bool {
+        let filterVersions = filterValues.compactMap { SemanticVersion.parse(version: $0) }
+        guard let propVersion = SemanticVersion.parse(version: propValue), !filterVersions.isEmpty else {
             return filterValues.contains { filterValue in
                 matchesComparable(propValue: propValue, op: op, filterValue: filterValue)
             }
         }
-        return filterValuesTransformed.contains { filterValueTransformed in
-            matchesComparable(propValue: propValueTransformed, op: op, filterValue: filterValueTransformed)
+        return filterVersions.contains { filterVersion in
+            matchesComparable(propValue: propVersion, op: op, filterValue: filterVersion)
         }
     }
 
@@ -307,7 +303,7 @@ public final class EvaluationEngine: Sendable {
         case is NSNull:
             return "null"
         case let number as NSNumber:
-            if CFGetTypeID(number) != CFBooleanGetTypeID() && !number.doubleValue.isFinite {
+            if !number.doubleValue.isFinite {
                 return "null"
             }
             return JavaScriptNumber.string(number)
@@ -357,11 +353,8 @@ public final class EvaluationEngine: Sendable {
         guard let value else {
             return nil
         }
-        // Convert sequences to a set of strings
+        // Every Swift array bridges to NSArray.
         if let sequence = value as? NSArray {
-            return sequenceToSet(sequence: sequence)
-        }
-        if let sequence = value as? [Any?] {
             return sequenceToSet(sequence: sequence)
         }
         // A dictionary is never a list (JS: `String(object)` is "[object Object]"); skip serializing it here.
@@ -373,25 +366,13 @@ public final class EvaluationEngine: Sendable {
         guard let stringValue = coerceString(value: value), stringValue.hasPrefix("[") else {
             return nil
         }
-        guard let dataValue = stringValue.data(using: .utf8) else {
+        guard let array = (try? JSONSerialization.jsonObject(with: Data(stringValue.utf8))) as? NSArray else {
             return nil
         }
-        if let opt = try? JSONSerialization.jsonObject(with: dataValue) {
-            if let nsArray = opt as? NSArray {
-                var result = Set<String>()
-                for element in nsArray {
-                    if let stringElement = coerceString(value: element), !stringElement.isEmpty {
-                        result.insert(stringElement)
-                    }
-                }
-                return result
-            }
-        }
-
-        return nil
+        return sequenceToSet(sequence: array)
     }
 
-    private func sequenceToSet(sequence: any Sequence) -> Set<String>? {
+    private func sequenceToSet(sequence: any Sequence) -> Set<String> {
         var result = Set<String>()
         // As JS, elements without a string form or with an empty one are dropped.
         for element in sequence {

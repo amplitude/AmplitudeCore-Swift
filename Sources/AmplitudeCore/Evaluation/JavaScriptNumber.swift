@@ -17,17 +17,14 @@ enum JavaScriptNumber {
         if CFGetTypeID(number) == CFBooleanGetTypeID() {
             return number.boolValue ? "true" : "false"
         }
-        if number is NSDecimalNumber || CFNumberIsFloatType(number) {
-            // JS has no Float or Decimal. Keep the digits they are written with (0.1, not 0.10000000149011612):
-            // Amplitude-Swift uploads them with JSONEncoder, which writes the same digits, so they are what a
-            // customer sees in Amplitude and copies into a rule.
-            return string(number.digitPreservingDoubleValue)
-        }
-        // JavaScript numbers are doubles, so integers beyond 2^53 print rounded there.
+        // Integers print exactly up to 2^53. Beyond it JavaScript numbers are doubles, so they print rounded.
         if let value = Int64(exactly: number), value.magnitude <= 1 << 53 {
             return String(value)
         }
-        return string(number.doubleValue)
+        // JS has no Float or Decimal. They keep the digits they are written with (0.1, not 0.10000000149011612):
+        // Amplitude-Swift uploads them with JSONEncoder, which writes the same digits, so they are what a customer
+        // sees in Amplitude and copies into a rule.
+        return string(number.digitPreservingDoubleValue)
     }
 
     /// Parses a string as JavaScript's `Number(value)` does, except that an empty or blank string is not a number
@@ -108,7 +105,7 @@ enum JavaScriptNumber {
 
     /// Formats a number like JavaScript's `Number.prototype.toString()`, using the shortest digits that round-trip
     /// the value (Swift's `description` provides them).
-    static func string<T: BinaryFloatingPoint & CustomStringConvertible>(_ value: T) -> String {
+    static func string(_ value: Double) -> String {
         if value.isNaN {
             return "NaN"
         }
