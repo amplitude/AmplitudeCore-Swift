@@ -382,15 +382,17 @@ final class EvaluationTargetingTests: XCTestCase {
     }
 
     func testSessionBucketingFallbacks() throws {
-        let flag = try decodeFlag(twentyPercentConfig)
+        // With the whole allocation in the bucket, every value that is hashed lands in it.
+        let everyone = try decodeFlag(twentyPercentConfig.replacingOccurrences(of: "  20\n", with: "  100\n"))
         let event: [String: Any?] = ["event_type": "Signup Started"]
         // Without a usable bucketing value the segment has no default variant, so it falls through to off.
-        XCTAssertEqual(evaluate(flag, ["event": event], key: iosKey), "off")
-        XCTAssertEqual(evaluate(flag, ["session_id": nil, "event": event], key: iosKey), "off")
-        XCTAssertEqual(evaluate(flag, ["session_id": "", "event": event], key: iosKey), "off")
+        XCTAssertEqual(evaluate(everyone, ["event": event], key: iosKey), "off")
+        XCTAssertEqual(evaluate(everyone, ["session_id": nil, "event": event], key: iosKey), "off")
+        XCTAssertEqual(evaluate(everyone, ["session_id": "", "event": event], key: iosKey), "off")
         // Zero is an ordinary bucketing value and is hashed like any other.
-        XCTAssertEqual(evaluate(flag, ["session_id": Int64(0), "event": event], key: iosKey), "off")
+        XCTAssertEqual(evaluate(everyone, ["session_id": Int64(0), "event": event], key: iosKey), "on")
         // A numeric session id and its string form land in the same bucket.
+        let flag = try decodeFlag(twentyPercentConfig)
         let sessionId = firstSessionId + 8 * sessionStep
         XCTAssertEqual(evaluate(flag, ["session_id": sessionId, "event": event], key: iosKey), "on")
         XCTAssertEqual(evaluate(flag, ["session_id": String(sessionId), "event": event], key: iosKey), "on")

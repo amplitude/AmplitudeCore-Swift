@@ -70,6 +70,23 @@ final class EvaluationRobustnessTests: XCTestCase {
         XCTAssertThrowsError(try decode(segments: [["variant": 1]]))
     }
 
+    func testDecodingErrorsNameTheFailingField() {
+        // Consumers report this path to diagnostics, so it is part of the contract.
+        let condition: [String: Any] = ["selector": [String](), "op": "is", "values": ["A"]]
+        let bucket: [String: Any] = ["selector": [String](), "salt": "s", "allocations": [[String: Any]]()]
+        let cases: [([String: Any], String)] = [
+            (["conditions": [[condition]]], "segments[0].conditions[0][0].selector"),
+            (["conditions": [[]]], "segments[0].conditions"),
+            (["bucket": bucket], "segments[0].bucket.selector"),
+            (["variant": 1], "segments[0].variant"),
+        ]
+        for (segment, path) in cases {
+            XCTAssertThrowsError(try decode(segments: [segment])) { error in
+                XCTAssertEqual(codingPath(of: error), path)
+            }
+        }
+    }
+
     func testMetadataStaysLenient() throws {
         let flag = try decode(segments: [["variant": "on", "metadata": "not an object"]], extra: ["metadata": 1])
         XCTAssertEqual(evaluate(flag, [:]), "on")
@@ -85,6 +102,24 @@ final class EvaluationRobustnessTests: XCTestCase {
         XCTAssertEqual(metadata, ["segmentId": .string("s1"), "note": .null, "flagVersion": .int(3),
                                   "nested": .dictionary(["a": .null])])
         XCTAssertNil(metadata?["absent"])
+    }
+
+    func testIntegersBeyondIntMaxDecodeAsDoubles() throws {
+        let flag = try decode(segments: [["variant": "on"]], extra: ["metadata": ["max": Int.max, "beyond": UInt64.max]])
+        let metadata = engine.evaluate(context: [:], flags: [flag])["flag"]?.metadata
+        XCTAssertEqual(metadata?["max"], .int(Int.max))
+        XCTAssertEqual(metadata?["beyond"], .double(Double(UInt64.max)))
+    }
+
+    func testLaterMetadataWinsAKey() throws {
+        let variants: [String: Any] = ["on": ["key": "on", "metadata": ["k": "variant"]], "off": ["key": "off"]]
+        let flag = try decode(segments: [["variant": "on", "metadata": ["k": "segment"]], ["variant": "off"]],
+                              extra: ["metadata": ["k": "flag"], "variants": variants])
+        XCTAssertEqual(engine.evaluate(context: [:], flags: [flag])["flag"]?.metadata?["k"], .string("variant"))
+        let withoutVariantMetadata = try decode(segments: [["variant": "off", "metadata": ["k": "segment"]]],
+                                                extra: ["metadata": ["k": "flag"], "variants": variants])
+        XCTAssertEqual(engine.evaluate(context: [:], flags: [withoutVariantMetadata])["flag"]?.metadata?["k"],
+                       .string("segment"))
     }
 
     func testConditionsReadAnotherFlagsResult() throws {
@@ -154,11 +189,10 @@ final class EvaluationRobustnessTests: XCTestCase {
     // MARK: - Numbers
 
     func testNumbersCompareAsJavaScriptStrings() throws {
+        // One value of each kind; JavaScriptNumberTests covers the formatting itself.
         let cases: [(Any, String)] = [
-            (0.1, "0.1"), (9.99, "9.99"), (1.0, "1"), (-0.0, "0"), (1e21, "1e+21"), (1e-7, "1e-7"),
-            (Float(0.1), "0.1"), (NSDecimalNumber(string: "6.5"), "6.5"), (Int64(1) << 53, "9007199254740992"),
-            (Int64.max, "9223372036854776000"), (Double.nan, "NaN"), (-Double.infinity, "-Infinity"),
-            (true, "true"), (Decimal(string: "19.99")!, "19.99"),
+            (0.1, "0.1"), (1.0, "1"), (Float(0.1), "0.1"), (Decimal(string: "19.99")!, "19.99"),
+            (Int64.max, "9223372036854776000"), (Double.nan, "NaN"), (true, "true"),
         ]
         for (value, string) in cases {
             XCTAssertEqual(evaluate(try conditionFlag("is", [string]), properties(["p": value])), "on", "\(value)")
@@ -206,6 +240,20 @@ final class EvaluationRobustnessTests: XCTestCase {
         XCTAssertEqual(evaluate(try conditionFlag("less", [" 20 "]), properties(["p": 12])), "on")
     }
 
+    // MARK: - Missing properties
+
+    func testNegatedSetAndRegexOperatorsMatchAMissingProperty() throws {
+        // Kotlin agrees; JS 0.13.6 returns false only because its missing-value branch omits these two operators.
+        let missing: [[String: Any?]] = [[:], ["event": ["event_properties": ["p": nil] as [String: Any?]]],
+                                         properties(["p": NSNull()])]
+        for context in missing {
+            for values in [["a"], ["(none)"]] {
+                XCTAssertEqual(evaluate(try conditionFlag("set is not", values), context), "on", "\(context) \(values)")
+                XCTAssertEqual(evaluate(try conditionFlag("regex does not match", values), context), "on", "\(context) \(values)")
+            }
+        }
+    }
+
     // MARK: - Strings
 
     func testEmptyStringsInArraysAreDropped() throws {
@@ -221,6 +269,7 @@ final class EvaluationRobustnessTests: XCTestCase {
             (["n": 0.1], #"{"n":0.1}"#),
             (["ratio": Double.nan], #"{"ratio":null}"#),
             (["q": "a\"b\\c\n\u{01}/"], #"{"q":"a\"b\\c\n\u0001/"}"#),
+            (["q": "\u{08}\u{0C}\r\t"], #"{"q":"\b\f\r\t"}"#),
             (["a": true, "b": NSNull(), "c": [1, "x"]] as [String: Any], #"{"a":true,"b":null,"c":[1,"x"]}"#),
             (["big": Int64.max], #"{"big":9223372036854776000}"#),
         ]
@@ -234,6 +283,18 @@ final class EvaluationRobustnessTests: XCTestCase {
     }
 
     // MARK: - Helpers
+
+    private func codingPath(of error: Error) -> String? {
+        let path: [CodingKey]
+        switch error {
+        case DecodingError.dataCorrupted(let context), DecodingError.typeMismatch(_, let context),
+             DecodingError.valueNotFound(_, let context), DecodingError.keyNotFound(_, let context):
+            path = context.codingPath
+        default:
+            return nil
+        }
+        return path.map { $0.intValue.map { "[\($0)]" } ?? ".\($0.stringValue)" }.joined().drop { $0 == "." }.description
+    }
 
     private func evaluate(_ flag: EvaluationFlag, _ context: [String: Any?]) -> String? {
         return engine.evaluate(context: context, flags: [flag])["flag"]?.key
