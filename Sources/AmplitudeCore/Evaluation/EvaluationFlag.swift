@@ -130,6 +130,31 @@ extension EvaluationSegment {
         self.conditions = try container.decodeIfPresent([[EvaluationCondition]].self, forKey: .conditions)
         self.variant = try container.decodeIfPresent(String.self, forKey: .variant)
         self.metadata = try? container.decode([String: JSONValue].self, forKey: .metadata)
+        // An empty group would match everyone. No backend generates one, but Remote Config drops null elements,
+        // so a malformed `[[null]]` arrives as `[[]]`.
+        if conditions?.contains(where: \.isEmpty) == true {
+            throw DecodingError.dataCorruptedError(forKey: .conditions, in: container, debugDescription: "Empty condition group")
+        }
+    }
+}
+
+extension EvaluationBucket {
+
+    enum CodingKeys: CodingKey {
+        case selector
+        case salt
+        case allocations
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.selector = try container.decode([String].self, forKey: .selector)
+        self.salt = try container.decode(String.self, forKey: .salt)
+        self.allocations = try container.decode([EvaluationAllocation].self, forKey: .allocations)
+        // A bucket that selects nothing cannot bucket, so every session would get the segment's default variant.
+        if selector.isEmpty {
+            throw DecodingError.dataCorruptedError(forKey: .selector, in: container, debugDescription: "Empty selector")
+        }
     }
 }
 

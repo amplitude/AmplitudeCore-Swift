@@ -40,6 +40,9 @@ final class EvaluationRobustnessTests: XCTestCase {
             XCTAssertThrowsError(try decode(segments: [["conditions": [[condition]], "variant": "on"]]), name)
         }
         XCTAssertThrowsError(try decode(segments: [["conditions": [valid], "variant": "on"]]), "one level of nesting")
+        // Remote Config turns `[[null]]` into `[[]]`, which would match everyone.
+        XCTAssertThrowsError(try decode(segments: [["conditions": [[]], "variant": "on"]]), "empty group")
+        XCTAssertThrowsError(try decode(segments: [["conditions": [[valid], []], "variant": "on"]]), "one empty group")
         XCTAssertThrowsError(try decode(segments: [["conditions": "x", "variant": "on"]]), "conditions not an array")
     }
 
@@ -50,6 +53,7 @@ final class EvaluationRobustnessTests: XCTestCase {
         let malformed: [String: Any] = [
             "missing salt": valid.filter { $0.key != "salt" },
             "missing selector": valid.filter { $0.key != "selector" },
+            "empty selector": valid.merging(["selector": [String]()]) { $1 },
             "missing allocations": valid.filter { $0.key != "allocations" },
             "missing distributions": valid.merging(["allocations": [["range": [0, 100]]]]) { $1 },
             "distribution without variant": valid.merging(
