@@ -12,11 +12,11 @@ import Foundation
 public class EvaluationEngine {
 
     public init() {}
-    
-    struct EvaluationTarget : Selectable {
+
+    struct EvaluationTarget: Selectable {
         let context: [String: Any?]
         var result: [String: EvaluationVariant]
-        
+
         func select(selector: String) -> Any? {
             switch selector {
             case "context": return context
@@ -25,7 +25,7 @@ public class EvaluationEngine {
             }
         }
     }
-    
+
     public func evaluate(context: [String: Any?], flags: [EvaluationFlag]) -> [String: EvaluationVariant] {
         var results: [String: EvaluationVariant] = [:]
         var target = EvaluationTarget(context: context, result: results)
@@ -37,9 +37,9 @@ public class EvaluationEngine {
         }
         return results
     }
-    
+
     private func evaluateFlag(target: EvaluationTarget, flag: EvaluationFlag) -> EvaluationVariant? {
-        var result: EvaluationVariant? = nil
+        var result: EvaluationVariant?
         for segment in flag.segments {
             if let segmentResult = evaluateSegment(target: target, flag: flag, segment: segment) {
                 // Merge all metadata into the result
@@ -50,15 +50,14 @@ public class EvaluationEngine {
         }
         return result
     }
-    
+
     private func evaluateSegment(target: EvaluationTarget, flag: EvaluationFlag, segment: EvaluationSegment) -> EvaluationVariant? {
         guard let segmentConditions = segment.conditions else {
             // Null conditions always match
-            if let variantKey = bucket(target: target, segment: segment) {
-                return flag.variants[variantKey]
-            } else {
+            guard let variantKey = bucket(target: target, segment: segment) else {
                 return nil
             }
+            return flag.variants[variantKey]
         }
         // Outer logic is "or" (||)
         for conditions in segmentConditions {
@@ -71,44 +70,42 @@ public class EvaluationEngine {
                 }
             }
             if match {
-                if let variantKey = bucket(target: target, segment: segment) {
-                    return flag.variants[variantKey]
-                } else {
+                guard let variantKey = bucket(target: target, segment: segment) else {
                     return nil
                 }
+                return flag.variants[variantKey]
             }
         }
         return nil
     }
-    
+
     private func matchCondition(target: EvaluationTarget, condition: EvaluationCondition) -> Bool {
         let propValue = target.select(selector: condition.selector)
         if propValue == nil {
             return matchNull(op: condition.op, filterValues: condition.values)
-        } else {
-            let propValueStringList = coerceStringList(value: propValue)
-            if isSetOperator(op: condition.op) {
-                guard let propValueStringList = propValueStringList else {
-                    return false
-                }
-                return matchSet(propValues: propValueStringList, op: condition.op, filterValues: condition.values)
-            } else if let propValueStringList = propValueStringList {
-                return matchStringsNonSet(propValues: propValueStringList, op: condition.op, filterValues: condition.values)
-            } else {
-                guard let propValueString = coerceString(value: propValue) else {
-                    return false
-                }
-                return matchString(propValue: propValueString, op: condition.op, filterValues: condition.values)
-            }
         }
+        let propValueStringList = coerceStringList(value: propValue)
+        if isSetOperator(op: condition.op) {
+            guard let propValueStringList else {
+                return false
+            }
+            return matchSet(propValues: propValueStringList, op: condition.op, filterValues: condition.values)
+        }
+        if let propValueStringList {
+            return matchStringsNonSet(propValues: propValueStringList, op: condition.op, filterValues: condition.values)
+        }
+        guard let propValueString = coerceString(value: propValue) else {
+            return false
+        }
+        return matchString(propValue: propValueString, op: condition.op, filterValues: condition.values)
     }
-    
+
     private func getHash(key: String) -> Int64 {
         let data = key.data(using: .utf8) ?? Data()
         let hash = data.murmurHash32x86(seed: 0)
         return Int64(hash) & 0xffffffff
     }
-    
+
     private func bucket(target: EvaluationTarget, segment: EvaluationSegment) -> String? {
         guard let segmentBucket = segment.bucket else {
             // A null bucket means the segment is fully rolled out. Select the default variant.
@@ -117,7 +114,7 @@ public class EvaluationEngine {
         // Select the bucketing value.
         let bucketingValue = coerceString(value: target.select(selector: segmentBucket.selector))
         // A null or empty bucketing value cannot be bucketed. Select the default variant.
-        guard let bucketingValue = bucketingValue else {
+        guard let bucketingValue else {
             return segment.variant
         }
         if bucketingValue.isEmpty {
@@ -160,7 +157,7 @@ public class EvaluationEngine {
         default: return false
         }
     }
-    
+
     private func matchSet(propValues: Set<String>, op: String, filterValues: Set<String>) -> Bool {
         switch op {
         case EvaluationOperator.SET_IS: return propValues == filterValues
@@ -172,7 +169,7 @@ public class EvaluationEngine {
         default: return false
         }
     }
-    
+
     private func matchString(propValue: String, op: String, filterValues: Set<String>) -> Bool {
         switch op {
         case EvaluationOperator.IS: return matchesIs(propValue: propValue, filterValues: filterValues)
@@ -192,7 +189,7 @@ public class EvaluationEngine {
         default: return false
         }
     }
-    
+
     private func matchStringsNonSet(propValues: Set<String>, op: String, filterValues: Set<String>) -> Bool {
         return propValues.contains { element in
             matchString(propValue: element, op: op, filterValues: filterValues)
@@ -208,33 +205,29 @@ public class EvaluationEngine {
         }
         return filterValues.contains(propValue)
     }
-    
+
     private func matchesContains(propValue: String, filterValues: Set<String>) -> Bool {
-        for filterValue in filterValues {
-            if propValue.lowercased().contains(filterValue.lowercased()) {
-                return true
-            }
+        for filterValue in filterValues where propValue.lowercased().contains(filterValue.lowercased()) {
+            return true
         }
         return false
     }
-    
-    private func matchesComparable<T : Comparable>(propValue: String, op: String, filterValues: Set<String>, transformer: @escaping (String) -> T?) -> Bool {
-        let propValueTransformed = transformer(propValue)
-        let filterValuesTransformed = filterValues.map(transformer).filter { $0 != nil } as! [T]
-        if propValueTransformed == nil || filterValuesTransformed.isEmpty {
+
+    private func matchesComparable<T: Comparable>(propValue: String, op: String, filterValues: Set<String>, transformer: (String) -> T?) -> Bool {
+        let filterValuesTransformed = filterValues.compactMap(transformer)
+        guard let propValueTransformed = transformer(propValue), !filterValuesTransformed.isEmpty else {
             // If the prop value or none of the filter values transform, fall
             // back on string comparison.
             return filterValues.contains { filterValue in
                 matchesComparable(propValue: propValue, op: op, filterValue: filterValue)
             }
-        } else {
-            return filterValuesTransformed.contains { filterValueTransformed in
-                matchesComparable(propValue: propValueTransformed!, op: op, filterValue: filterValueTransformed)
-            }
+        }
+        return filterValuesTransformed.contains { filterValueTransformed in
+            matchesComparable(propValue: propValueTransformed, op: op, filterValue: filterValueTransformed)
         }
     }
-    
-    private func matchesComparable<T : Comparable>(propValue: T, op: String, filterValue: T) -> Bool {
+
+    private func matchesComparable<T: Comparable>(propValue: T, op: String, filterValue: T) -> Bool {
         switch op {
         case EvaluationOperator.LESS_THAN, EvaluationOperator.VERSION_LESS_THAN: return propValue < filterValue
         case EvaluationOperator.LESS_THAN_EQUALS, EvaluationOperator.VERSION_LESS_THAN_EQUALS: return propValue <= filterValue
@@ -243,60 +236,56 @@ public class EvaluationEngine {
         default: return false
         }
     }
-    
+
     private func matchesRegex(propValue: String, filterValues: Set<String>) -> Bool {
         return filterValues.contains { filterValue in
             propValue.range(of: filterValue, options: .regularExpression) != nil
         }
     }
-    
+
     private func matchesSetContainsAll(propValues: Set<String>, filterValues: Set<String>) -> Bool {
         if propValues.count < filterValues.count {
             return false
         }
-        for filterValue in filterValues {
-            if !matchesIs(propValue: filterValue, filterValues: propValues) {
-                return false
-            }
+        for filterValue in filterValues where !matchesIs(propValue: filterValue, filterValues: propValues) {
+            return false
         }
         return true
     }
-    
+
     private func matchesSetContainsAny(propValues: Set<String>, filterValues: Set<String>) -> Bool {
-        for filterValue in filterValues {
-            if matchesIs(propValue: filterValue, filterValues: propValues) {
-                return true
-            }
+        for filterValue in filterValues where matchesIs(propValue: filterValue, filterValues: propValues) {
+            return true
         }
         return false
     }
-    
+
     private func parseDouble(value: String) -> Double? {
-        return Double.init(value)
+        return Double(value)
     }
-    
+
     private func coerceString(value: Any?) -> String? {
-        guard let value = value else {
+        guard let value else {
             return nil
         }
         if let stringValue = value as? String {
             return stringValue
-        } else if let jsonData = try? JSONSerialization.data(withJSONObject: value, options: .fragmentsAllowed) {
-            return String(data: jsonData, encoding: .utf8)
-        } else {
+        }
+        guard let jsonData = try? JSONSerialization.data(withJSONObject: value, options: .fragmentsAllowed) else {
             return nil
         }
+        return String(data: jsonData, encoding: .utf8)
     }
-    
+
     private func coerceStringList(value: Any?) -> Set<String>? {
-        guard let value = value else {
+        guard let value else {
             return nil
         }
         // Convert sequences to a set of strings
         if let sequence = value as? NSArray {
             return sequenceToSet(sequence: sequence)
         }
-        if let sequence = value as? Array<Any?> {
+        if let sequence = value as? [Any?] {
             return sequenceToSet(sequence: sequence)
         }
         // Parse the string value as a json array and convert to a set of strings
@@ -318,10 +307,10 @@ public class EvaluationEngine {
                 return result
             }
         }
- 
+
         return nil
     }
-    
+
     private func sequenceToSet(sequence: any Sequence) -> Set<String>? {
         var result = Set<String>()
         for element in sequence {
@@ -331,18 +320,18 @@ public class EvaluationEngine {
         }
         return result
     }
-    
+
     private func containsNone(filterValues: Set<String>) -> Bool {
         return filterValues.contains("(none)")
     }
-    
+
     private func containsBooleans(filterValues: Set<String>) -> Bool {
         return filterValues.contains { filterValue in
             let lower = filterValue.lowercased()
             return lower == "true" || lower == "false"
         }
     }
-    
+
     private func isSetOperator(op: String) -> Bool {
         switch op {
         case EvaluationOperator.SET_IS: return true
@@ -354,16 +343,16 @@ public class EvaluationEngine {
         default: return false
         }
     }
-    
+
     private func mergeMetadata(_ m1: [String: Any?]?, _ m2: [String: Any?]?, _ m3: [String: Any?]?) -> [String: Any?]? {
         var mergedMetadata = m1 ?? [:]
-        if let m2 = m2 {
-            mergedMetadata = mergedMetadata.merging(m2, uniquingKeysWith: { (_, other) in other })
+        if let m2 {
+            mergedMetadata = mergedMetadata.merging(m2, uniquingKeysWith: { _, other in other })
         }
-        if let m3 = m3 {
-            mergedMetadata = mergedMetadata.merging(m3, uniquingKeysWith: { (_, other) in other })
+        if let m3 {
+            mergedMetadata = mergedMetadata.merging(m3, uniquingKeysWith: { _, other in other })
         }
-        if mergedMetadata.count == 0 {
+        if mergedMetadata.isEmpty {
             return nil
         }
         return mergedMetadata

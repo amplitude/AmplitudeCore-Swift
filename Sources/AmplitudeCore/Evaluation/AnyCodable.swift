@@ -9,7 +9,7 @@
 import Foundation
 
 struct AnyDecodable: Decodable {
-    
+
     let value: Any?
 
     init<T>(_ value: T?) {
@@ -19,7 +19,7 @@ struct AnyDecodable: Decodable {
             self.value = value
         }
     }
-    
+
     init(from decoder: Decoder) throws {
         let container = try decoder.singleValueContainer()
 
@@ -46,7 +46,7 @@ struct AnyDecodable: Decodable {
 }
 
 struct AnyEncodable: Encodable {
-    
+
     let value: Any
 
     init<T>(_ value: T?) {

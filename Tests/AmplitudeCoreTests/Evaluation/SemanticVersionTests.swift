@@ -10,8 +10,8 @@ import XCTest
 import Foundation
 @_spi(Internal) @testable import AmplitudeCore
 
-class SemanticVersionTests : XCTestCase {
-    
+class SemanticVersionTests: XCTestCase {
+
     func testInvalidVersions() {
         // just major
         assertInvalidVersion("10")
@@ -51,7 +51,7 @@ class SemanticVersionTests : XCTestCase {
         assertInvalidVersion("-10.1")
         assertInvalidVersion("10.-1")
     }
-    
+
     func testValidVersions() {
         assertValidVersion("100.2")
         assertValidVersion("0.102.39")
@@ -68,7 +68,7 @@ class SemanticVersionTests : XCTestCase {
         assertValidVersion("10.20.30-b894")
         assertValidVersion("10.20.30-b8c9")
     }
-    
+
     func testVersionComparison() {
         // EQUALS case
         assertVersionComparison("66.12.23", EvaluationOperator.IS, "66.12.23")
@@ -133,19 +133,15 @@ func assertVersionComparison(_ v1: String, _ op: String, _ v2: String) {
         XCTFail("parsing should succeed: \(v2)")
         return
     }
-    switch (op) {
+    switch op {
     case EvaluationOperator.IS:
         XCTAssertTrue(sv1 == sv2)
-        break
     case EvaluationOperator.IS_NOT:
         XCTAssertTrue(sv1 != sv2)
-        break
     case EvaluationOperator.VERSION_LESS_THAN:
         XCTAssertTrue(sv1 < sv2)
-        break
     case EvaluationOperator.VERSION_GREATER_THAN:
         XCTAssertTrue(sv1 > sv2)
-        break
     default:
         XCTFail("unexpected op \(op)")
     }

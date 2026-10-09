@@ -8,7 +8,6 @@
 
 import Foundation
 
-
 let MURMUR3_X86_32: String = """
 479943832
 1667709009

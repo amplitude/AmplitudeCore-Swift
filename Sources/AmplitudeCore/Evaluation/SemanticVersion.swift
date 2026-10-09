@@ -9,19 +9,19 @@
 import Foundation
 
 struct SemanticVersion: Comparable {
-    
+
     private static let MAJOR_MINOR_REGEX = "(\\d+)\\.(\\d+)"
     private static let PATCH_REGEX = "(\\d+)"
     private static let PRERELEASE_REGEX = "(-(([-\\w]+\\.?)*))?"
     private static let VERSION_PATTERN = "^\(MAJOR_MINOR_REGEX)(\\.\(PATCH_REGEX)\(PRERELEASE_REGEX))?$"
-    
+
     let major: Int
     let minor: Int
     let patch: Int
     let preRelease: String?
-    
+
     static func parse(version: String?) -> SemanticVersion? {
-        guard let version = version else {
+        guard let version else {
             return nil
         }
         guard let regex = try? NSRegularExpression(pattern: VERSION_PATTERN) else {
@@ -47,27 +47,24 @@ struct SemanticVersion: Comparable {
         let preRelease = captureGroups[5]
         return SemanticVersion(major: major, minor: minor, patch: patch, preRelease: preRelease)
     }
-    
+
     static func < (lhs: SemanticVersion, rhs: SemanticVersion) -> Bool {
-        if lhs.major < rhs.major {
-            return true
-        } else if lhs.major > rhs.major {
-            return false
-        } else if lhs.minor < rhs.minor {
-            return true
-        } else if lhs.minor > rhs.minor {
-            return false
-        } else if lhs.patch < rhs.patch {
-            return true
-        } else if lhs.patch > rhs.patch {
-            return false
-        } else if lhs.preRelease != nil && rhs.preRelease == nil {
-            return true
-        } else if lhs.preRelease == nil && rhs.preRelease != nil {
-            return false
-        } else if let lhsPreRelease = lhs.preRelease, let rhsPreRelease = rhs.preRelease {
+        if lhs.major != rhs.major {
+            return lhs.major < rhs.major
+        }
+        if lhs.minor != rhs.minor {
+            return lhs.minor < rhs.minor
+        }
+        if lhs.patch != rhs.patch {
+            return lhs.patch < rhs.patch
+        }
+        switch (lhs.preRelease, rhs.preRelease) {
+        case let (lhsPreRelease?, rhsPreRelease?):
             return lhsPreRelease < rhsPreRelease
-        } else {
+        case (.some, nil):
+            // A pre-release precedes its release.
+            return true
+        default:
             return false
         }
     }
@@ -75,7 +72,7 @@ struct SemanticVersion: Comparable {
 
 private extension Int {
     init?(string: String?) {
-        guard let string = string else {
+        guard let string else {
             return nil
         }
         self.init(string)

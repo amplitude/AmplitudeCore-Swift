@@ -26,14 +26,14 @@ extension Dictionary: Selectable where Key == String {
 
 extension Selectable {
     func select(selector: [String?]?) -> Any? {
-        guard let selector = selector else {
+        guard let selector else {
             return nil
         }
         guard !selector.isEmpty else {
             return nil
         }
         var selectable: Selectable = self
-        for i in 0..<selector.count-1 {
+        for i in 0..<selector.count - 1 {
             guard let selectorElement = selector[i] else {
                 return nil
             }
