@@ -3,7 +3,8 @@
 //  AmplitudeCore
 //
 //  Created by Brian Giori on 9/11/23.
-//  Ported from experiment-ios-client v1.20.3 (Sources/Experiment/EvaluationEngine.swift).
+//  Adapted from experiment-ios-client v1.20.3 (Sources/Experiment/EvaluationEngine.swift). It deliberately
+//  differs in how values become strings (as JS), numeric operators (numbers only) and bucket ranges (no traps).
 //
 
 import Foundation
@@ -26,6 +27,14 @@ public final class EvaluationEngine: Sendable {
         }
     }
 
+    /// Evaluates `flags` in the order given against `context`, which conditions select as `["context", …]`.
+    ///
+    /// A condition may also select the result of a flag evaluated earlier in the same call, as
+    /// `["result", flagKey, "key" | "value" | "payload" | "metadata", …]`, so a flag must come after the flags it
+    /// depends on.
+    ///
+    /// - Returns: The variant of each flag that matched a segment, by flag key. A flag that matches nothing has no
+    ///   entry.
     public func evaluate(context: [String: Any?], flags: [EvaluationFlag]) -> [String: EvaluationVariant] {
         var results: [String: EvaluationVariant] = [:]
         var target = EvaluationTarget(context: context, result: results)

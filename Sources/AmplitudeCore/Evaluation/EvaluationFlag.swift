@@ -3,7 +3,8 @@
 //  AmplitudeCore
 //
 //  Created by Brian Giori on 9/11/23.
-//  Ported from experiment-ios-client v1.20.3 (Sources/Experiment/EvaluationFlag.swift).
+//  Adapted from experiment-ios-client v1.20.3 (Sources/Experiment/EvaluationFlag.swift). It deliberately
+//  differs in decoding: malformed rules fail instead of being dropped, and loose values are JSONValue.
 //
 
 import Foundation
@@ -50,7 +51,8 @@ public struct EvaluationVariant: Decodable, Sendable, Selectable {
     public let key: String?
     let value: JSONValue?
     let payload: JSONValue?
-    /// The flag's, the matched segment's and the variant's metadata, merged in that order.
+    /// In an evaluation result, the flag's, the matched segment's and the variant's metadata, merged in that order,
+    /// so a later level wins a key.
     public let metadata: [String: JSONValue]?
 }
 

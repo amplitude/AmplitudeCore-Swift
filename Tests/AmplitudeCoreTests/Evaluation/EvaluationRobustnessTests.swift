@@ -6,7 +6,7 @@
 //
 //  Malformed rules and unusual property values, written against the SPI surface only. For rules and
 //  values that JSON can carry, the expected results are those of @amplitude/experiment-core 0.13.6,
-//  except that malformed rules fail decoding instead of throwing during evaluation.
+//  except that malformed rules fail decoding, where JS throws, matches or misses depending on the defect.
 //
 
 import Foundation
