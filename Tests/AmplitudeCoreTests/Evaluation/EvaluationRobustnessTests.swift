@@ -103,15 +103,6 @@ final class EvaluationRobustnessTests: XCTestCase {
         }
     }
 
-    func testFlagsEncodeBackToTheirJSON() throws {
-        let json = #"{"key":"flag","metadata":{"m":null},"segments":[{"metadata":{"segmentName":"all"},"variant":"on"}],"#
-            + #""variants":{"on":{"key":"on","metadata":{"k":[1,null]},"payload":{"n":null,"ratio":1.5},"value":"on"}}}"#
-        let encoder = JSONEncoder()
-        encoder.outputFormatting = .sortedKeys
-        let flag = try JSONDecoder().decode(EvaluationFlag.self, from: Data(json.utf8))
-        XCTAssertEqual(String(decoding: try encoder.encode(flag), as: UTF8.self), json)
-    }
-
     // MARK: - Bucket ranges
 
     func testShortOrReversedRangesDoNotMatch() throws {

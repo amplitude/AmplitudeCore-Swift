@@ -9,7 +9,7 @@
 import Foundation
 
 @_spi(Internal)
-public class EvaluationEngine {
+public final class EvaluationEngine: Sendable {
 
     public init() {}
 
