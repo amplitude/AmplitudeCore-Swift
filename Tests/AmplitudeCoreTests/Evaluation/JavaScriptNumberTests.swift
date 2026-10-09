@@ -43,6 +43,25 @@ final class JavaScriptNumberTests: XCTestCase {
         }
     }
 
+    func testParsesNumbersLikeJavaScript() {
+        // Expected values are JavaScript's Number(string).
+        let numbers: [(String, Double)] = [
+            ("1", 1), ("-1.5", -1.5), (" 42 ", 42), ("1.", 1), (".5", 0.5), ("+.5", 0.5), ("-.5", -0.5),
+            ("1e3", 1000), ("1E-2", 0.01), ("1e+2", 100), ("007", 7), ("1e400", .infinity),
+            ("Infinity", .infinity), ("+Infinity", .infinity), ("-Infinity", -.infinity),
+            ("0x10", 16), ("0X1f", 31), ("0o17", 15), ("0b101", 5),
+        ]
+        for (text, expected) in numbers {
+            XCTAssertEqual(JavaScriptNumber.parse(text), expected, text)
+        }
+        // NaN in JavaScript. An empty or blank string is 0 there, but not a number here.
+        let notNumbers = ["inf", "infinity", "nan", "NaN", "0x1p4", "0x", "-0x10", "+0x10", "0x-1", "0xG", "0b2",
+                          "1_000", "1e", "e5", ".", "+", "--1", "1.2.3", "1 2", "N/A", "", "  "]
+        for text in notNumbers {
+            XCTAssertNil(JavaScriptNumber.parse(text), text)
+        }
+    }
+
     func testFloatsUseTheirOwnShortestDigits() {
         XCTAssertEqual(JavaScriptNumber.string(Float(0.1)), "0.1")
         XCTAssertEqual(JavaScriptNumber.string(Float(0.1) as NSNumber), "0.1")

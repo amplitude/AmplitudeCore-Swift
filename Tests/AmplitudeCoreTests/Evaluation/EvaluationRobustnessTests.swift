@@ -193,6 +193,13 @@ final class EvaluationRobustnessTests: XCTestCase {
         XCTAssertEqual(evaluate(try conditionFlag("less", ["abc"]), properties(["p": 5])), "off")
         XCTAssertEqual(evaluate(try conditionFlag("greater", ["2026-01-01"]), properties(["p": "2026-10-06"])), "off")
         XCTAssertEqual(evaluate(try conditionFlag("greater", ["NaN"]), properties(["p": "NaN"])), "off")
+        // Swift's `Double(_:)` reads these as numbers; JS `Number()` does not.
+        for value in ["inf", "infinity", "0x1p4"] {
+            XCTAssertEqual(evaluate(try conditionFlag("greater", ["1"]), properties(["p": value])), "off", value)
+        }
+        // JS reads unsigned 0x / 0o / 0b integers, on either side.
+        XCTAssertEqual(evaluate(try conditionFlag("greater", ["15"]), properties(["p": "0x10"])), "on")
+        XCTAssertEqual(evaluate(try conditionFlag("less", ["0b11"]), properties(["p": 2])), "on")
         // Filter values that are not numbers are skipped; the others still compare.
         XCTAssertEqual(evaluate(try conditionFlag("greater", ["abc", "10"]), properties(["p": 12])), "on")
         // Version operators still fall back to comparing strings when a value is not a version.

@@ -219,11 +219,11 @@ public class EvaluationEngine {
     /// becomes NaN. Falling back to comparing strings, as the version operators do, would make "N/A" greater
     /// than 100, since letters sort after digits.
     private func matchesNumber(propValue: String, op: String, filterValues: Set<String>) -> Bool {
-        guard let propNumber = parseDouble(value: propValue) else {
+        guard let propNumber = JavaScriptNumber.parse(propValue) else {
             return false
         }
         return filterValues.contains { filterValue in
-            guard let filterNumber = parseDouble(value: filterValue) else {
+            guard let filterNumber = JavaScriptNumber.parse(filterValue) else {
                 return false
             }
             return matchesComparable(propValue: propNumber, op: op, filterValue: filterNumber)
@@ -275,11 +275,6 @@ public class EvaluationEngine {
             return true
         }
         return false
-    }
-
-    private func parseDouble(value: String) -> Double? {
-        // JS `Number()` ignores surrounding whitespace.
-        return Double(value.trimmingCharacters(in: .whitespacesAndNewlines))
     }
 
     private func coerceString(value: Any?) -> String? {

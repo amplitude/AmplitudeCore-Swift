@@ -30,6 +30,82 @@ enum JavaScriptNumber {
         return string(number.doubleValue)
     }
 
+    /// Parses a string as JavaScript's `Number(value)` does, except that an empty or blank string is not a number
+    /// (JS reads it as 0). Accepts a decimal literal with an optional sign, fraction and exponent, `Infinity`, and
+    /// an unsigned `0x`, `0o` or `0b` integer. Swift's `Double(_:)` alone would also accept "inf", "nan" and
+    /// hexadecimal floats such as "0x1p4", which JS reads as NaN.
+    static func parse(_ value: String) -> Double? {
+        let text = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        switch text {
+        case "Infinity", "+Infinity":
+            return .infinity
+        case "-Infinity":
+            return -.infinity
+        default:
+            break
+        }
+        let bytes = Array(text.utf8)
+        if bytes.count > 2, bytes[0] == UInt8(ascii: "0"), let radix = radix(prefix: bytes[1]) {
+            return parseInteger(bytes.dropFirst(2), radix: radix)
+        }
+        return isDecimalLiteral(bytes) ? Double(text) : nil
+    }
+
+    private static func radix(prefix: UInt8) -> Int? {
+        switch prefix {
+        case UInt8(ascii: "x"), UInt8(ascii: "X"): return 16
+        case UInt8(ascii: "o"), UInt8(ascii: "O"): return 8
+        case UInt8(ascii: "b"), UInt8(ascii: "B"): return 2
+        default: return nil
+        }
+    }
+
+    private static func parseInteger(_ digits: ArraySlice<UInt8>, radix: Int) -> Double? {
+        var result = 0.0
+        for byte in digits {
+            guard let digit = Character(Unicode.Scalar(byte)).hexDigitValue, digit < radix else {
+                return nil
+            }
+            result = result * Double(radix) + Double(digit)
+        }
+        return result
+    }
+
+    /// `[+-]? (digits [. digits?] | . digits) ([eE] [+-]? digits)?`
+    private static func isDecimalLiteral(_ bytes: [UInt8]) -> Bool {
+        var index = 0
+        func skipSign() {
+            if index < bytes.count, bytes[index] == UInt8(ascii: "+") || bytes[index] == UInt8(ascii: "-") {
+                index += 1
+            }
+        }
+        func skipDigits() -> Int {
+            let start = index
+            while index < bytes.count, (UInt8(ascii: "0")...UInt8(ascii: "9")).contains(bytes[index]) {
+                index += 1
+            }
+            return index - start
+        }
+
+        skipSign()
+        var mantissaDigits = skipDigits()
+        if index < bytes.count, bytes[index] == UInt8(ascii: ".") {
+            index += 1
+            mantissaDigits += skipDigits()
+        }
+        guard mantissaDigits > 0 else {
+            return false
+        }
+        if index < bytes.count, bytes[index] == UInt8(ascii: "e") || bytes[index] == UInt8(ascii: "E") {
+            index += 1
+            skipSign()
+            guard skipDigits() > 0 else {
+                return false
+            }
+        }
+        return index == bytes.count
+    }
+
     /// Formats a number like JavaScript's `Number.prototype.toString()`, using the shortest digits that round-trip
     /// the value (Swift's `description` provides them).
     static func string<T: BinaryFloatingPoint & CustomStringConvertible>(_ value: T) -> String {
