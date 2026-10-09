@@ -13,14 +13,14 @@ public struct EvaluationFlag: Codable {
     let key: String
     let variants: [String: EvaluationVariant]
     let segments: [EvaluationSegment]
-    let metadata: [String: Any?]?
+    let metadata: [String: JSONValue]?
 }
 
 struct EvaluationSegment: Codable {
     let bucket: EvaluationBucket?
     let conditions: [[EvaluationCondition]]?
     let variant: String?
-    let metadata: [String: Any?]?
+    let metadata: [String: JSONValue]?
 }
 
 struct EvaluationBucket: Codable {
@@ -48,10 +48,10 @@ struct EvaluationDistribution: Codable {
 @_spi(Internal)
 public struct EvaluationVariant: Codable, Selectable {
     public let key: String?
-    let value: Any?
-    let payload: Any?
+    let value: JSONValue?
+    let payload: JSONValue?
     /// The flag's, the matched segment's and the variant's metadata, merged in that order.
-    public let metadata: [String: Any?]?
+    public let metadata: [String: JSONValue]?
 }
 
 enum EvaluationOperator {
@@ -82,11 +82,12 @@ enum EvaluationOperator {
 extension EvaluationVariant {
 
     func select(selector: String) -> Any? {
+        // A condition on another flag's result reads plain values, as it does from the context.
         switch selector {
         case "key": return key
-        case "value": return value
-        case "payload": return payload
-        case "metadata": return metadata
+        case "value": return value?.toAny()
+        case "payload": return payload?.toAny()
+        case "metadata": return metadata?.mapValues { $0.toAny() }
         default: return nil
         }
     }
@@ -108,8 +109,7 @@ extension EvaluationFlag {
         self.key = try container.decode(String.self, forKey: .key)
         self.variants = try container.decode([String: EvaluationVariant].self, forKey: .variants)
         self.segments = try container.decode([EvaluationSegment].self, forKey: .segments)
-        let metadata = try? container.decode([String: AnyDecodable].self, forKey: .metadata)
-        self.metadata = metadata?.mapValues { anyDecodable in anyDecodable.value }
+        self.metadata = try? container.decode([String: JSONValue].self, forKey: .metadata)
     }
 
     public func encode(to encoder: Encoder) throws {
@@ -117,9 +117,7 @@ extension EvaluationFlag {
         try container.encode(key, forKey: .key)
         try container.encode(variants, forKey: .variants)
         try container.encode(segments, forKey: .segments)
-        if let metadata {
-            try? container.encodeIfPresent(AnyEncodable(metadata), forKey: .metadata)
-        }
+        try container.encodeIfPresent(metadata, forKey: .metadata)
     }
 }
 
@@ -139,8 +137,7 @@ extension EvaluationSegment {
         self.bucket = try container.decodeIfPresent(EvaluationBucket.self, forKey: .bucket)
         self.conditions = try container.decodeIfPresent([[EvaluationCondition]].self, forKey: .conditions)
         self.variant = try container.decodeIfPresent(String.self, forKey: .variant)
-        let metadata = try? container.decode([String: AnyDecodable].self, forKey: .metadata)
-        self.metadata = metadata?.mapValues { anyDecodable in anyDecodable.value }
+        self.metadata = try? container.decode([String: JSONValue].self, forKey: .metadata)
     }
 
     func encode(to encoder: Encoder) throws {
@@ -148,9 +145,7 @@ extension EvaluationSegment {
         try? container.encodeIfPresent(bucket, forKey: .bucket)
         try? container.encodeIfPresent(conditions, forKey: .conditions)
         try? container.encodeIfPresent(variant, forKey: .variant)
-        if let metadata {
-            try? container.encodeIfPresent(AnyEncodable(metadata), forKey: .metadata)
-        }
+        try? container.encodeIfPresent(metadata, forKey: .metadata)
     }
 }
 
@@ -186,23 +181,16 @@ extension EvaluationVariant {
     public init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         self.key = try? container.decode(String.self, forKey: .key)
-        self.value = try? container.decode(AnyDecodable.self, forKey: .value).value
-        self.payload = try? container.decode(AnyDecodable.self, forKey: .payload).value
-        let metadata = try? container.decode([String: AnyDecodable].self, forKey: .metadata)
-        self.metadata = metadata?.mapValues { anyDecodable in anyDecodable.value }
+        self.value = try? container.decodeIfPresent(JSONValue.self, forKey: .value)
+        self.payload = try? container.decodeIfPresent(JSONValue.self, forKey: .payload)
+        self.metadata = try? container.decode([String: JSONValue].self, forKey: .metadata)
     }
 
     public func encode(to encoder: Encoder) throws {
         var container = encoder.container(keyedBy: CodingKeys.self)
         try? container.encodeIfPresent(key, forKey: .key)
-        if let value {
-            try? container.encodeIfPresent(AnyEncodable(value), forKey: .value)
-        }
-        if let payload {
-            try? container.encodeIfPresent(AnyEncodable(payload), forKey: .payload)
-        }
-        if let metadata {
-            try? container.encodeIfPresent(AnyEncodable(metadata), forKey: .metadata)
-        }
+        try? container.encodeIfPresent(value, forKey: .value)
+        try? container.encodeIfPresent(payload, forKey: .payload)
+        try? container.encodeIfPresent(metadata, forKey: .metadata)
     }
 }

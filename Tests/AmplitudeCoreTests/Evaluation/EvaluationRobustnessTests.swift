@@ -71,6 +71,47 @@ final class EvaluationRobustnessTests: XCTestCase {
         XCTAssertEqual(evaluate(flag, [:]), "on")
     }
 
+    // MARK: - Metadata, values and payloads
+
+    func testMetadataIsJSON() throws {
+        let flag = try decode(segments: [["variant": "on", "metadata": ["segmentId": "s1", "note": NSNull()]]],
+                              extra: ["metadata": ["flagVersion": 3, "nested": ["a": NSNull()]]])
+        let metadata = engine.evaluate(context: [:], flags: [flag])["flag"]?.metadata
+        // A null value stays distinct from an absent key.
+        XCTAssertEqual(metadata, ["segmentId": .string("s1"), "note": .null, "flagVersion": .int(3),
+                                  "nested": .dictionary(["a": .null])])
+        XCTAssertNil(metadata?["absent"])
+    }
+
+    func testConditionsReadAnotherFlagsResult() throws {
+        let dependency = try JSONDecoder().decode(EvaluationFlag.self, from: Data(#"""
+        {"key": "dependency", "segments": [{"metadata": {"segmentName": "all"}, "variant": "on"}],
+         "variants": {"on": {"key": "on", "value": "on", "payload": {"n": null, "ratio": 1.5, "tags": ["a", null, "b"]}}}}
+        """#.utf8))
+        let cases: [([String], String, String)] = [
+            (["value"], "is", "on"),
+            (["metadata", "segmentName"], "is", "all"),
+            (["payload", "ratio"], "greater", "1"),
+            (["payload", "n"], "is", "(none)"),
+            (["payload", "tags"], "set contains", "b"),
+            (["payload"], "is", #"{"n":null,"ratio":1.5,"tags":["a",null,"b"]}"#),
+        ]
+        for (path, op, value) in cases {
+            let condition: [String: Any] = ["selector": ["result", "dependency"] + path, "op": op, "values": [value]]
+            let flag = try decode(segments: [["conditions": [[condition]], "variant": "on"], ["variant": "off"]])
+            XCTAssertEqual(engine.evaluate(context: [:], flags: [dependency, flag])["flag"]?.key, "on", "\(path) \(op) \(value)")
+        }
+    }
+
+    func testFlagsEncodeBackToTheirJSON() throws {
+        let json = #"{"key":"flag","metadata":{"m":null},"segments":[{"metadata":{"segmentName":"all"},"variant":"on"}],"#
+            + #""variants":{"on":{"key":"on","metadata":{"k":[1,null]},"payload":{"n":null,"ratio":1.5},"value":"on"}}}"#
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = .sortedKeys
+        let flag = try JSONDecoder().decode(EvaluationFlag.self, from: Data(json.utf8))
+        XCTAssertEqual(String(decoding: try encoder.encode(flag), as: UTF8.self), json)
+    }
+
     // MARK: - Bucket ranges
 
     func testShortOrReversedRangesDoNotMatch() throws {

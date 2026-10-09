@@ -122,7 +122,10 @@ final class EvaluationTargetingTests: XCTestCase {
     }
 
     private func metadata(_ variant: EvaluationVariant?, _ key: String) -> String? {
-        return variant?.metadata?[key] as? String
+        guard case .string(let value)? = variant?.metadata?[key] else {
+            return nil
+        }
+        return value
     }
 
     // MARK: - Web targeting config

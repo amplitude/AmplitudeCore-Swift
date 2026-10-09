@@ -430,7 +430,11 @@ public class EvaluationEngine {
         }
     }
 
-    private func mergeMetadata(_ m1: [String: Any?]?, _ m2: [String: Any?]?, _ m3: [String: Any?]?) -> [String: Any?]? {
+    private func mergeMetadata(
+        _ m1: [String: JSONValue]?,
+        _ m2: [String: JSONValue]?,
+        _ m3: [String: JSONValue]?
+    ) -> [String: JSONValue]? {
         var mergedMetadata = m1 ?? [:]
         if let m2 {
             mergedMetadata = mergedMetadata.merging(m2, uniquingKeysWith: { _, other in other })

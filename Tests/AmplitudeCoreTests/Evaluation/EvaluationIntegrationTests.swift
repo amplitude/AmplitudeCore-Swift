@@ -41,12 +41,12 @@ class EvaluationIntegrationTests: XCTestCase {
         var user = userContext(userId: "user_id")
         var result = engine.evaluate(context: user, flags: flags)["test-individual-inclusions"]
         XCTAssertEqual("on", result?.key)
-        XCTAssertEqual("individual-inclusions", result?.metadata?["segmentName"] as! String)
+        XCTAssertEqual(.string("individual-inclusions"), result?.metadata?["segmentName"])
         // Match Device ID
         user = userContext(deviceId: "device_id")
         result = engine.evaluate(context: user, flags: flags)["test-individual-inclusions"]
         XCTAssertEqual("on", result?.key)
-        XCTAssertEqual("individual-inclusions", result?.metadata?["segmentName"] as! String)
+        XCTAssertEqual(.string("individual-inclusions"), result?.metadata?["segmentName"])
         // Doesn't Match User ID
         user = userContext(userId: "not_user_id")
         result = engine.evaluate(context: user, flags: flags)["test-individual-inclusions"]
@@ -67,7 +67,7 @@ class EvaluationIntegrationTests: XCTestCase {
         let user = userContext(userId: "user_id", deviceId: "device_id")
         let result = engine.evaluate(context: user, flags: flags)["test-flag-dependencies-off"]
         XCTAssertEqual("off", result?.key)
-        XCTAssertEqual("flag-dependencies", result?.metadata?["segmentName"] as! String)
+        XCTAssertEqual(.string("flag-dependencies"), result?.metadata?["segmentName"])
     }
 
     func testStickyBucketing() {
@@ -75,12 +75,12 @@ class EvaluationIntegrationTests: XCTestCase {
         var user = userContext(userId: "user_id", deviceId: "device_id", userProperties: ["[Experiment] test-sticky-bucketing": "on"])
         var result = engine.evaluate(context: user, flags: flags)["test-sticky-bucketing"]
         XCTAssertEqual("on", result?.key)
-        XCTAssertEqual("sticky-bucketing", result?.metadata?["segmentName"] as! String)
+        XCTAssertEqual(.string("sticky-bucketing"), result?.metadata?["segmentName"])
         // Off
         user = userContext(userId: "user_id", deviceId: "device_id", userProperties: ["[Experiment] test-sticky-bucketing": "off"])
         result = engine.evaluate(context: user, flags: flags)["test-sticky-bucketing"]
         XCTAssertEqual("off", result?.key)
-        XCTAssertEqual("All Other Users", result?.metadata?["segmentName"] as! String)
+        XCTAssertEqual(.string("All Other Users"), result?.metadata?["segmentName"])
         // Non-variant
         user = userContext(userId: "user_id", deviceId: "device_id", userProperties: ["[Experiment] test-sticky-bucketing": "not-a-variant"])
         result = engine.evaluate(context: user, flags: flags)["test-sticky-bucketing"]
@@ -91,14 +91,14 @@ class EvaluationIntegrationTests: XCTestCase {
         let user = userContext(userId: "user_id", deviceId: "device_id")
         let result = engine.evaluate(context: user, flags: flags)["test-experiment"]
         XCTAssertEqual("on", result?.key)
-        XCTAssertEqual("exp-1", result?.metadata?["experimentKey"] as! String)
+        XCTAssertEqual(.string("exp-1"), result?.metadata?["experimentKey"])
     }
 
     func testFlag() {
         let user = userContext(userId: "user_id", deviceId: "device_id")
         let result = engine.evaluate(context: user, flags: flags)["test-flag"]
         XCTAssertEqual("on", result?.key)
-        XCTAssertNil(result?.metadata?["experimentKey"] ?? nil)
+        XCTAssertNil(result?.metadata?["experimentKey"])
     }
 
     // Conditional Logic Tests
