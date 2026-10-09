@@ -125,20 +125,24 @@ public class EvaluationEngine {
         let hash = getHash(key: keyToHash)
         let allocationValue = hash % 100
         let distributionValue = hash / 100
+        // Ranges are compared rather than turned into a Range, so that a short or reversed range from remote
+        // config does not match instead of trapping, as in the JS and Kotlin engines.
         for allocation in segmentBucket.allocations {
-            let allocationStart = Int64(allocation.range[0])
-            let allocationEnd = Int64(allocation.range[1])
-            if (allocationStart..<allocationEnd).contains(allocationValue) {
-                for distribution in allocation.distributions {
-                    let distributionStart = Int64(distribution.range[0])
-                    let distributionEnd = Int64(distribution.range[1])
-                    if (distributionStart..<distributionEnd).contains(distributionValue) {
-                        return distribution.variant
-                    }
-                }
+            guard contains(range: allocation.range, value: allocationValue) else {
+                continue
+            }
+            for distribution in allocation.distributions where contains(range: distribution.range, value: distributionValue) {
+                return distribution.variant
             }
         }
         return segment.variant
+    }
+
+    private func contains(range: [Int], value: Int64) -> Bool {
+        guard range.count >= 2 else {
+            return false
+        }
+        return value >= Int64(range[0]) && value < Int64(range[1])
     }
 
     private func matchNull(op: String, filterValues: Set<String>) -> Bool {
@@ -261,21 +265,40 @@ public class EvaluationEngine {
     }
 
     private func parseDouble(value: String) -> Double? {
-        return Double(value)
+        // JS `Number()` ignores surrounding whitespace.
+        return Double(value.trimmingCharacters(in: .whitespacesAndNewlines))
     }
 
     private func coerceString(value: Any?) -> String? {
         guard let value else {
             return nil
         }
-        if let stringValue = value as? String {
+        switch value {
+        case let stringValue as String:
             return stringValue
-        }
-        guard let jsonData = try? JSONSerialization.data(withJSONObject: value, options: .fragmentsAllowed) else {
+        case is NSNull:
             return nil
+        case let number as NSNumber:
+            // As JS `String(value)`, so that 0.1 matches "0.1" rather than "0.10000000000000001".
+            return JavaScriptNumber.string(number)
+        default:
+            // Arrays and dictionaries become JSON, as with JS `JSON.stringify`. JSONSerialization raises an
+            // uncatchable exception on values JSON cannot represent, such as Date, so those have no string form.
+            guard JSONSerialization.isValidJSONObject(value),
+                  let jsonData = try? JSONSerialization.data(withJSONObject: value, options: Self.jsonWritingOptions) else {
+                return nil
+            }
+            return String(data: jsonData, encoding: .utf8)
         }
-        return String(data: jsonData, encoding: .utf8)
     }
+
+    private static let jsonWritingOptions: JSONSerialization.WritingOptions = {
+        if #available(macOS 10.15, iOS 13.0, tvOS 13.0, watchOS 6.0, *) {
+            // JS does not escape "/".
+            return [.withoutEscapingSlashes]
+        }
+        return []
+    }()
 
     private func coerceStringList(value: Any?) -> Set<String>? {
         guard let value else {
@@ -300,7 +323,7 @@ public class EvaluationEngine {
             if let nsArray = opt as? NSArray {
                 var result = Set<String>()
                 for element in nsArray {
-                    if let stringElement = coerceString(value: element) {
+                    if let stringElement = coerceString(value: element), !stringElement.isEmpty {
                         result.insert(stringElement)
                     }
                 }
@@ -313,8 +336,9 @@ public class EvaluationEngine {
 
     private func sequenceToSet(sequence: any Sequence) -> Set<String>? {
         var result = Set<String>()
+        // As JS, elements without a string form or with an empty one are dropped.
         for element in sequence {
-            if let stringElement = coerceString(value: element) {
+            if let stringElement = coerceString(value: element), !stringElement.isEmpty {
                 result.insert(stringElement)
             }
         }

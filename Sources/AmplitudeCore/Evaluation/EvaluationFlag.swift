@@ -134,9 +134,11 @@ extension EvaluationSegment {
 
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
-        self.bucket = try? container.decode(EvaluationBucket.self, forKey: .bucket)
-        self.conditions = try? container.decode([[EvaluationCondition]].self, forKey: .conditions)
-        self.variant = try? container.decode(String.self, forKey: .variant)
+        // Absent or null means none, but a malformed value fails decoding: silently dropping malformed
+        // conditions would make the segment match everyone.
+        self.bucket = try container.decodeIfPresent(EvaluationBucket.self, forKey: .bucket)
+        self.conditions = try container.decodeIfPresent([[EvaluationCondition]].self, forKey: .conditions)
+        self.variant = try container.decodeIfPresent(String.self, forKey: .variant)
         let metadata = try? container.decode([String: AnyDecodable].self, forKey: .metadata)
         self.metadata = metadata?.mapValues { anyDecodable in anyDecodable.value }
     }
