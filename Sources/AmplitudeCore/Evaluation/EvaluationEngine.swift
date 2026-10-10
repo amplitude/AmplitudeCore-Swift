@@ -3,13 +3,14 @@
 //  AmplitudeCore
 //
 //  Created by Brian Giori on 9/11/23.
-//  Ported from experiment-ios-client v1.20.3 (Sources/Experiment/EvaluationEngine.swift).
+//  Adapted from experiment-ios-client v1.20.3 (Sources/Experiment/EvaluationEngine.swift). It deliberately
+//  differs in how values become strings (as JS), numeric operators (numbers only) and bucket ranges (no traps).
 //
 
 import Foundation
 
 @_spi(Internal)
-public class EvaluationEngine {
+public final class EvaluationEngine: Sendable {
 
     public init() {}
 
@@ -26,6 +27,14 @@ public class EvaluationEngine {
         }
     }
 
+    /// Evaluates `flags` in the order given against `context`, which conditions select as `["context", …]`.
+    ///
+    /// A condition may also select the result of a flag evaluated earlier in the same call, as
+    /// `["result", flagKey, "key" | "value" | "payload" | "metadata", …]`, so a flag must come after the flags it
+    /// depends on.
+    ///
+    /// - Returns: The variant of each flag that matched a segment, by flag key. A flag that matches nothing has no
+    ///   entry.
     public func evaluate(context: [String: Any?], flags: [EvaluationFlag]) -> [String: EvaluationVariant] {
         var results: [String: EvaluationVariant] = [:]
         var target = EvaluationTarget(context: context, result: results)
@@ -101,9 +110,7 @@ public class EvaluationEngine {
     }
 
     private func getHash(key: String) -> Int64 {
-        let data = key.data(using: .utf8) ?? Data()
-        let hash = data.murmurHash32x86(seed: 0)
-        return Int64(hash) & 0xffffffff
+        return Int64(Hash.murmur3x86_32(key))
     }
 
     private func bucket(target: EvaluationTarget, segment: EvaluationSegment) -> String? {
@@ -125,20 +132,24 @@ public class EvaluationEngine {
         let hash = getHash(key: keyToHash)
         let allocationValue = hash % 100
         let distributionValue = hash / 100
+        // Ranges are compared rather than turned into a Range, so that a short or reversed range from remote
+        // config does not match instead of trapping, as in the JS and Kotlin engines.
         for allocation in segmentBucket.allocations {
-            let allocationStart = Int64(allocation.range[0])
-            let allocationEnd = Int64(allocation.range[1])
-            if (allocationStart..<allocationEnd).contains(allocationValue) {
-                for distribution in allocation.distributions {
-                    let distributionStart = Int64(distribution.range[0])
-                    let distributionEnd = Int64(distribution.range[1])
-                    if (distributionStart..<distributionEnd).contains(distributionValue) {
-                        return distribution.variant
-                    }
-                }
+            guard contains(range: allocation.range, value: allocationValue) else {
+                continue
+            }
+            for distribution in allocation.distributions where contains(range: distribution.range, value: distributionValue) {
+                return distribution.variant
             }
         }
         return segment.variant
+    }
+
+    private func contains(range: [Int], value: Int64) -> Bool {
+        guard range.count >= 2 else {
+            return false
+        }
+        return value >= Int64(range[0]) && value < Int64(range[1])
     }
 
     private func matchNull(op: String, filterValues: Set<String>) -> Bool {
@@ -177,13 +188,9 @@ public class EvaluationEngine {
         case EvaluationOperator.CONTAINS: return matchesContains(propValue: propValue, filterValues: filterValues)
         case EvaluationOperator.DOES_NOT_CONTAIN: return !matchesContains(propValue: propValue, filterValues: filterValues)
         case EvaluationOperator.LESS_THAN, EvaluationOperator.LESS_THAN_EQUALS, EvaluationOperator.GREATER_THAN, EvaluationOperator.GREATER_THAN_EQUALS:
-            return matchesComparable(propValue: propValue, op: op, filterValues: filterValues) { value in
-                return self.parseDouble(value: value)
-            }
+            return matchesNumber(propValue: propValue, op: op, filterValues: filterValues)
         case EvaluationOperator.VERSION_LESS_THAN, EvaluationOperator.VERSION_LESS_THAN_EQUALS, EvaluationOperator.VERSION_GREATER_THAN, EvaluationOperator.VERSION_GREATER_THAN_EQUALS:
-            return matchesComparable(propValue: propValue, op: op, filterValues: filterValues) { value in
-                return SemanticVersion.parse(version: value)
-            }
+            return matchesVersion(propValue: propValue, op: op, filterValues: filterValues)
         case EvaluationOperator.REGEX_MATCH: return matchesRegex(propValue: propValue, filterValues: filterValues)
         case EvaluationOperator.REGEX_DOES_NOT_MATCH: return !matchesRegex(propValue: propValue, filterValues: filterValues)
         default: return false
@@ -213,17 +220,32 @@ public class EvaluationEngine {
         return false
     }
 
-    private func matchesComparable<T: Comparable>(propValue: String, op: String, filterValues: Set<String>, transformer: (String) -> T?) -> Bool {
-        let filterValuesTransformed = filterValues.compactMap(transformer)
-        guard let propValueTransformed = transformer(propValue), !filterValuesTransformed.isEmpty else {
-            // If the prop value or none of the filter values transform, fall
-            // back on string comparison.
+    /// Numeric operators compare numbers only: a value that is not a number never matches, as in JS, where it
+    /// becomes NaN. Falling back to comparing strings, as the version operators do, would make "N/A" greater
+    /// than 100, since letters sort after digits.
+    private func matchesNumber(propValue: String, op: String, filterValues: Set<String>) -> Bool {
+        guard let propNumber = JavaScriptNumber.parse(propValue) else {
+            return false
+        }
+        return filterValues.contains { filterValue in
+            guard let filterNumber = JavaScriptNumber.parse(filterValue) else {
+                return false
+            }
+            return matchesComparable(propValue: propNumber, op: op, filterValue: filterNumber)
+        }
+    }
+
+    /// Version operators compare semantic versions, and fall back to comparing strings when the property or every
+    /// filter value is not a version.
+    private func matchesVersion(propValue: String, op: String, filterValues: Set<String>) -> Bool {
+        let filterVersions = filterValues.compactMap { SemanticVersion.parse(version: $0) }
+        guard let propVersion = SemanticVersion.parse(version: propValue), !filterVersions.isEmpty else {
             return filterValues.contains { filterValue in
                 matchesComparable(propValue: propValue, op: op, filterValue: filterValue)
             }
         }
-        return filterValuesTransformed.contains { filterValueTransformed in
-            matchesComparable(propValue: propValueTransformed, op: op, filterValue: filterValueTransformed)
+        return filterVersions.contains { filterVersion in
+            matchesComparable(propValue: propVersion, op: op, filterValue: filterVersion)
         }
     }
 
@@ -260,61 +282,110 @@ public class EvaluationEngine {
         return false
     }
 
-    private func parseDouble(value: String) -> Double? {
-        return Double(value)
-    }
-
     private func coerceString(value: Any?) -> String? {
         guard let value else {
             return nil
         }
-        if let stringValue = value as? String {
+        switch value {
+        case let stringValue as String:
             return stringValue
+        case is NSNull:
+            return nil
+        case let number as NSNumber:
+            // As JS `String(value)`, so that 0.1 matches "0.1" rather than "0.10000000000000001".
+            return JavaScriptNumber.string(number)
+        default:
+            // Arrays and dictionaries become JSON, as with JS `JSON.stringify`. Values JSON cannot represent, such
+            // as Date, have no string form.
+            return javaScriptJSON(value: value)
         }
-        guard let jsonData = try? JSONSerialization.data(withJSONObject: value, options: .fragmentsAllowed) else {
+    }
+
+    /// JSON text as JS `JSON.stringify` writes it: numbers as JS `String()`, non-finite numbers as null, "/" not
+    /// escaped. Dictionaries have no order, so keys are sorted where JS would keep insertion order. Returns nil when
+    /// the value contains something JSON cannot represent. JSONSerialization is not used: it prints 0.1 as
+    /// 0.10000000000000001, escapes "/" before iOS 13, and raises an uncatchable exception on such values.
+    private func javaScriptJSON(value: Any) -> String? {
+        switch value {
+        case let string as String:
+            return javaScriptJSONString(string)
+        case is NSNull:
+            return "null"
+        case let number as NSNumber:
+            if !number.doubleValue.isFinite {
+                return "null"
+            }
+            return JavaScriptNumber.string(number)
+        case let array as NSArray:
+            var elements: [String] = []
+            for element in array {
+                guard let json = javaScriptJSON(value: element) else {
+                    return nil
+                }
+                elements.append(json)
+            }
+            return "[" + elements.joined(separator: ",") + "]"
+        case let dictionary as NSDictionary:
+            var members: [(key: String, json: String)] = []
+            for (key, element) in dictionary {
+                guard let key = key as? String, let json = javaScriptJSON(value: element) else {
+                    return nil
+                }
+                members.append((key, json))
+            }
+            members.sort { $0.key < $1.key }
+            return "{" + members.map { javaScriptJSONString($0.key) + ":" + $0.json }.joined(separator: ",") + "}"
+        default:
             return nil
         }
-        return String(data: jsonData, encoding: .utf8)
+    }
+
+    private func javaScriptJSONString(_ string: String) -> String {
+        var result = "\""
+        for scalar in string.unicodeScalars {
+            switch scalar {
+            case "\"": result += "\\\""
+            case "\\": result += "\\\\"
+            case "\u{08}": result += "\\b"
+            case "\u{0C}": result += "\\f"
+            case "\n": result += "\\n"
+            case "\r": result += "\\r"
+            case "\t": result += "\\t"
+            case _ where scalar.value < 0x20: result += String(format: "\\u%04x", scalar.value)
+            default: result.unicodeScalars.append(scalar)
+            }
+        }
+        return result + "\""
     }
 
     private func coerceStringList(value: Any?) -> Set<String>? {
         guard let value else {
             return nil
         }
-        // Convert sequences to a set of strings
+        // Every Swift array bridges to NSArray.
         if let sequence = value as? NSArray {
             return sequenceToSet(sequence: sequence)
         }
-        if let sequence = value as? [Any?] {
-            return sequenceToSet(sequence: sequence)
+        // A dictionary is never a list (JS: `String(object)` is "[object Object]"); skip serializing it here.
+        if value is NSDictionary {
+            return nil
         }
         // Parse the string value as a json array and convert to a set of strings
         // or return nil if the string could not be parsed as a json array.
         guard let stringValue = coerceString(value: value), stringValue.hasPrefix("[") else {
             return nil
         }
-        guard let dataValue = stringValue.data(using: .utf8) else {
+        guard let array = (try? JSONSerialization.jsonObject(with: Data(stringValue.utf8))) as? NSArray else {
             return nil
         }
-        if let opt = try? JSONSerialization.jsonObject(with: dataValue) {
-            if let nsArray = opt as? NSArray {
-                var result = Set<String>()
-                for element in nsArray {
-                    if let stringElement = coerceString(value: element) {
-                        result.insert(stringElement)
-                    }
-                }
-                return result
-            }
-        }
-
-        return nil
+        return sequenceToSet(sequence: array)
     }
 
-    private func sequenceToSet(sequence: any Sequence) -> Set<String>? {
+    private func sequenceToSet(sequence: any Sequence) -> Set<String> {
         var result = Set<String>()
+        // As JS, elements without a string form or with an empty one are dropped.
         for element in sequence {
-            if let stringElement = coerceString(value: element) {
+            if let stringElement = coerceString(value: element), !stringElement.isEmpty {
                 result.insert(stringElement)
             }
         }
@@ -344,7 +415,11 @@ public class EvaluationEngine {
         }
     }
 
-    private func mergeMetadata(_ m1: [String: Any?]?, _ m2: [String: Any?]?, _ m3: [String: Any?]?) -> [String: Any?]? {
+    private func mergeMetadata(
+        _ m1: [String: JSONValue]?,
+        _ m2: [String: JSONValue]?,
+        _ m3: [String: JSONValue]?
+    ) -> [String: JSONValue]? {
         var mergedMetadata = m1 ?? [:]
         if let m2 {
             mergedMetadata = mergedMetadata.merging(m2, uniquingKeysWith: { _, other in other })

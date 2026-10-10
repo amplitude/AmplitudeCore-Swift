@@ -32,7 +32,6 @@ class SemanticVersionTests: XCTestCase {
         assertInvalidVersion("23!")
         assertInvalidVersion("23.#5")
         assertInvalidVersion("")
-        assertInvalidVersion(nil)
 
         // more numbers
         assertInvalidVersion("2.3.4.567")
@@ -108,14 +107,24 @@ class SemanticVersionTests: XCTestCase {
         // patch comparison comes first
         assertVersionComparison("20.5.6-b1.2.x", EvaluationOperator.VERSION_GREATER_THAN, "20.5.5")
     }
+    func testNonASCIISuffixesAreReadWhole() {
+        // NSRange counts UTF-16 units: measuring the string in characters cut off its end.
+        assertInvalidVersion("1.2.3-a\u{0301}!")
+        assertVersionComparison("1.2.0-a\u{0301}", EvaluationOperator.VERSION_GREATER_THAN, "1.2.0-a")
+    }
+
+    func testOverflowingComponentsAreNotVersions() {
+        assertInvalidVersion("1.2.999999999999999999999999")
+        assertInvalidVersion("99999999999999999999.0")
+    }
 }
 
-func assertInvalidVersion(_ versionString: String?) {
+func assertInvalidVersion(_ versionString: String) {
     guard SemanticVersion.parse(version: versionString) != nil else {
         // expect null
         return
     }
-    XCTFail("Should have failed creating a semantic version for \(versionString ?? "nil")")
+    XCTFail("Should have failed creating a semantic version for \(versionString)")
 }
 
 func assertValidVersion(_ versionString: String) {

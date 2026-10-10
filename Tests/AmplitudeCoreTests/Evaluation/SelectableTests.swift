@@ -12,15 +12,6 @@ import Foundation
 
 class SelectableTests: XCTestCase {
 
-    let baseObject: [String: Any?] = [
-        "nil": nil,
-        "string": "value",
-        "int": 13,
-        "double": 13.12,
-        "boolean": true,
-        "array": [1, 2, 3],
-    ]
-
     let object: [String: Any?] = [
         "nil": nil,
         "string": "value",

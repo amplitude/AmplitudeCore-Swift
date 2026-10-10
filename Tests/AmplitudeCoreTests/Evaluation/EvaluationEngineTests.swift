@@ -9,8 +9,6 @@ import XCTest
 
 class EvaluationEngineTests: XCTestCase {
 
-    let engine = EvaluationEngine()
-
     // Scalar string tests
 
     func testScalarStringIsMatch() {

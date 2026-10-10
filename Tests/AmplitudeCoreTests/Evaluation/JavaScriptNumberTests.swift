@@ -1,0 +1,97 @@
+//
+//  JavaScriptNumberTests.swift
+//  AmplitudeCoreTests
+//
+//  Created by Jin Xu on 10/6/26.
+//
+
+import Foundation
+import XCTest
+@testable import AmplitudeCore
+
+final class JavaScriptNumberTests: XCTestCase {
+
+    func testDoublesFormatLikeJavaScript() {
+        // Expected values are JavaScript's String(number).
+        let cases: [(Double, String)] = [
+            (9.99, "9.99"),
+            (1.0, "1"),
+            (100, "100"),
+            (0.1 + 0.2, "0.30000000000000004"),
+            (-2.5, "-2.5"),
+            (0, "0"),
+            (-0.0, "0"),
+            (123_456.789, "123456.789"),
+            (0.000001, "0.000001"),
+            (0.0000012, "0.0000012"),
+            (0.00001234, "0.00001234"),
+            (1e-7, "1e-7"),
+            (-1e-7, "-1e-7"),
+            (5e-324, "5e-324"),
+            (1e16, "10000000000000000"),
+            (1e20, "100000000000000000000"),
+            (1e21, "1e+21"),
+            (1.5e21, "1.5e+21"),
+            (9_007_199_254_740_994, "9007199254740994"),
+            (1.7976931348623157e308, "1.7976931348623157e+308"),
+            (.nan, "NaN"),
+            (.infinity, "Infinity"),
+            (-.infinity, "-Infinity"),
+        ]
+        for (value, expected) in cases {
+            XCTAssertEqual(JavaScriptNumber.string(value), expected, "\(value)")
+        }
+    }
+
+    func testParsesNumbersLikeJavaScript() {
+        // Expected values are JavaScript's Number(string).
+        let numbers: [(String, Double)] = [
+            ("1", 1), ("-1.5", -1.5), (" 42 ", 42), ("1.", 1), (".5", 0.5), ("+.5", 0.5), ("-.5", -0.5),
+            ("1e3", 1000), ("1E-2", 0.01), ("1e+2", 100), ("007", 7), ("1e400", .infinity),
+            ("Infinity", .infinity), ("+Infinity", .infinity), ("-Infinity", -.infinity),
+            ("0x10", 16), ("0X1f", 31), ("0o17", 15), ("0b101", 5),
+        ]
+        for (text, expected) in numbers {
+            XCTAssertEqual(JavaScriptNumber.parse(text), expected, text)
+        }
+        // NaN in JavaScript. An empty or blank string is 0 there, but not a number here.
+        let notNumbers = ["inf", "infinity", "nan", "NaN", "0x1p4", "0x", "-0x10", "+0x10", "0x-1", "0xG", "0b2",
+                          "1_000", "1e", "e5", ".", "+", "--1", "1.2.3", "1 2", "N/A", "", "  "]
+        for text in notNumbers {
+            XCTAssertNil(JavaScriptNumber.parse(text), text)
+        }
+    }
+
+    func testFloatsUseTheirOwnShortestDigits() {
+        XCTAssertEqual(JavaScriptNumber.string(Float(0.1) as NSNumber), "0.1")
+        XCTAssertEqual(JavaScriptNumber.string(Float(1e-7) as NSNumber), "1e-7")
+        XCTAssertEqual(JavaScriptNumber.string(Float(16_777_216) as NSNumber), "16777216")
+    }
+
+    func testNumbersByType() throws {
+        XCTAssertEqual(JavaScriptNumber.string(42 as NSNumber), "42")
+        XCTAssertEqual(JavaScriptNumber.string(Int64(1_726_380_000_000) as NSNumber), "1726380000000")
+        // Integers beyond 2^53 print rounded, as JavaScript numbers are doubles.
+        XCTAssertEqual(JavaScriptNumber.string((Int64(1) << 53) as NSNumber), "9007199254740992")
+        XCTAssertEqual(JavaScriptNumber.string(Int64.max as NSNumber), "9223372036854776000")
+        XCTAssertEqual(JavaScriptNumber.string((-(Int64(1) << 53) - 2) as NSNumber), "-9007199254740994")
+        XCTAssertEqual(JavaScriptNumber.string(UInt64.max as NSNumber), "18446744073709552000")
+        XCTAssertEqual(JavaScriptNumber.string(CGFloat(4.5) as NSNumber), "4.5")
+        XCTAssertEqual(JavaScriptNumber.string(NSDecimalNumber(string: "6.5")), "6.5")
+        // `doubleValue` would give 19.990000000000002, 0.7290000000000001 and 5.497999999999999.
+        for decimal in ["19.99", "0.729", "5.498"] {
+            XCTAssertEqual(JavaScriptNumber.string(NSDecimalNumber(string: decimal)), decimal)
+            XCTAssertEqual(JavaScriptNumber.string(Decimal(string: decimal)! as NSDecimalNumber), decimal)
+        }
+        XCTAssertEqual(JavaScriptNumber.string(NSDecimalNumber.notANumber), "NaN")
+        XCTAssertEqual(JavaScriptNumber.string(true as NSNumber), "true")
+        XCTAssertEqual(JavaScriptNumber.string(NSNumber(value: false)), "false")
+
+        // Numbers arriving through JSON, as from Flutter or React Native.
+        let json = try XCTUnwrap(try JSONSerialization.jsonObject(with: Data(#"[9.99, 1.0, 1, 0.1, true]"#.utf8)) as? [NSNumber])
+        XCTAssertEqual(json.map(JavaScriptNumber.string), ["9.99", "1", "1", "0.1", "true"])
+        // JSONSerialization returns NSDecimalNumber for mantissas beyond 17 digits.
+        let long = try XCTUnwrap(try JSONSerialization.jsonObject(with: Data("[0.1234567890123456789]".utf8)) as? [NSNumber])
+        XCTAssertEqual(long.map(JavaScriptNumber.string), ["0.12345678901234568"])
+    }
+}

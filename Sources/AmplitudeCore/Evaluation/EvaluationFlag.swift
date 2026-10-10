@@ -3,55 +3,57 @@
 //  AmplitudeCore
 //
 //  Created by Brian Giori on 9/11/23.
-//  Ported from experiment-ios-client v1.20.3 (Sources/Experiment/EvaluationFlag.swift).
+//  Adapted from experiment-ios-client v1.20.3 (Sources/Experiment/EvaluationFlag.swift). It deliberately
+//  differs in decoding: malformed rules fail instead of being dropped, and loose values are JSONValue.
 //
 
 import Foundation
 
 @_spi(Internal)
-public struct EvaluationFlag: Codable {
-    let key: String
+public struct EvaluationFlag: Decodable, Sendable {
+    public let key: String
     let variants: [String: EvaluationVariant]
     let segments: [EvaluationSegment]
-    let metadata: [String: Any?]?
+    let metadata: [String: JSONValue]?
 }
 
-struct EvaluationSegment: Codable {
+struct EvaluationSegment: Decodable {
     let bucket: EvaluationBucket?
     let conditions: [[EvaluationCondition]]?
     let variant: String?
-    let metadata: [String: Any?]?
+    let metadata: [String: JSONValue]?
 }
 
-struct EvaluationBucket: Codable {
+struct EvaluationBucket: Decodable {
     let selector: [String]
     let salt: String
     let allocations: [EvaluationAllocation]
 }
 
-struct EvaluationCondition: Codable {
+struct EvaluationCondition: Decodable {
     let selector: [String]
     let op: String
     let values: Set<String>
 }
 
-struct EvaluationAllocation: Codable {
+struct EvaluationAllocation: Decodable {
     let range: [Int]
     let distributions: [EvaluationDistribution]
 }
 
-struct EvaluationDistribution: Codable {
+struct EvaluationDistribution: Decodable {
     let variant: String
     let range: [Int]
 }
 
 @_spi(Internal)
-public struct EvaluationVariant: Codable, Selectable {
+public struct EvaluationVariant: Decodable, Sendable, Selectable {
     public let key: String?
-    let value: Any?
-    let payload: Any?
-    /// The flag's, the matched segment's and the variant's metadata, merged in that order.
-    public let metadata: [String: Any?]?
+    let value: JSONValue?
+    let payload: JSONValue?
+    /// In an evaluation result, the flag's, the matched segment's and the variant's metadata, merged in that order,
+    /// so a later level wins a key.
+    public let metadata: [String: JSONValue]?
 }
 
 enum EvaluationOperator {
@@ -82,17 +84,18 @@ enum EvaluationOperator {
 extension EvaluationVariant {
 
     func select(selector: String) -> Any? {
+        // A condition on another flag's result reads plain values, as it does from the context.
         switch selector {
         case "key": return key
-        case "value": return value
-        case "payload": return payload
-        case "metadata": return metadata
+        case "value": return value?.toAny()
+        case "payload": return payload?.toAny()
+        case "metadata": return metadata?.mapValues { $0.toAny() }
         default: return nil
         }
     }
 }
 
-// Codable Extensions
+// Decodable Extensions
 
 extension EvaluationFlag {
 
@@ -108,18 +111,7 @@ extension EvaluationFlag {
         self.key = try container.decode(String.self, forKey: .key)
         self.variants = try container.decode([String: EvaluationVariant].self, forKey: .variants)
         self.segments = try container.decode([EvaluationSegment].self, forKey: .segments)
-        let metadata = try? container.decode([String: AnyDecodable].self, forKey: .metadata)
-        self.metadata = metadata?.mapValues { anyDecodable in anyDecodable.value }
-    }
-
-    public func encode(to encoder: Encoder) throws {
-        var container = encoder.container(keyedBy: CodingKeys.self)
-        try container.encode(key, forKey: .key)
-        try container.encode(variants, forKey: .variants)
-        try container.encode(segments, forKey: .segments)
-        if let metadata {
-            try? container.encodeIfPresent(AnyEncodable(metadata), forKey: .metadata)
-        }
+        self.metadata = try? container.decode([String: JSONValue].self, forKey: .metadata)
     }
 }
 
@@ -134,20 +126,56 @@ extension EvaluationSegment {
 
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
-        self.bucket = try? container.decode(EvaluationBucket.self, forKey: .bucket)
-        self.conditions = try? container.decode([[EvaluationCondition]].self, forKey: .conditions)
-        self.variant = try? container.decode(String.self, forKey: .variant)
-        let metadata = try? container.decode([String: AnyDecodable].self, forKey: .metadata)
-        self.metadata = metadata?.mapValues { anyDecodable in anyDecodable.value }
+        // Absent or null means none, but a malformed value fails decoding: silently dropping malformed
+        // conditions would make the segment match everyone.
+        self.bucket = try container.decodeIfPresent(EvaluationBucket.self, forKey: .bucket)
+        self.conditions = try container.decodeIfPresent([[EvaluationCondition]].self, forKey: .conditions)
+        self.variant = try container.decodeIfPresent(String.self, forKey: .variant)
+        self.metadata = try? container.decode([String: JSONValue].self, forKey: .metadata)
+        // An empty group would match everyone. No backend generates one, but Remote Config drops null elements,
+        // so a malformed `[[null]]` arrives as `[[]]`.
+        if conditions?.contains(where: \.isEmpty) == true {
+            throw DecodingError.dataCorruptedError(forKey: .conditions, in: container, debugDescription: "Empty condition group")
+        }
+    }
+}
+
+extension EvaluationBucket {
+
+    enum CodingKeys: CodingKey {
+        case selector
+        case salt
+        case allocations
     }
 
-    func encode(to encoder: Encoder) throws {
-        var container = encoder.container(keyedBy: CodingKeys.self)
-        try? container.encodeIfPresent(bucket, forKey: .bucket)
-        try? container.encodeIfPresent(conditions, forKey: .conditions)
-        try? container.encodeIfPresent(variant, forKey: .variant)
-        if let metadata {
-            try? container.encodeIfPresent(AnyEncodable(metadata), forKey: .metadata)
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.selector = try container.decode([String].self, forKey: .selector)
+        self.salt = try container.decode(String.self, forKey: .salt)
+        self.allocations = try container.decode([EvaluationAllocation].self, forKey: .allocations)
+        // A bucket that selects nothing cannot bucket, so every session would get the segment's default variant.
+        if selector.isEmpty {
+            throw DecodingError.dataCorruptedError(forKey: .selector, in: container, debugDescription: "Empty selector")
+        }
+    }
+}
+
+extension EvaluationCondition {
+
+    enum CodingKeys: CodingKey {
+        case selector
+        case op
+        case values
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.selector = try container.decode([String].self, forKey: .selector)
+        self.op = try container.decode(String.self, forKey: .op)
+        self.values = try container.decode(Set<String>.self, forKey: .values)
+        // Without a selector the condition reads a missing property, so negated operators would match everyone.
+        if selector.isEmpty {
+            throw DecodingError.dataCorruptedError(forKey: .selector, in: container, debugDescription: "Empty selector")
         }
     }
 }
@@ -164,23 +192,8 @@ extension EvaluationVariant {
     public init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         self.key = try? container.decode(String.self, forKey: .key)
-        self.value = try? container.decode(AnyDecodable.self, forKey: .value).value
-        self.payload = try? container.decode(AnyDecodable.self, forKey: .payload).value
-        let metadata = try? container.decode([String: AnyDecodable].self, forKey: .metadata)
-        self.metadata = metadata?.mapValues { anyDecodable in anyDecodable.value }
-    }
-
-    public func encode(to encoder: Encoder) throws {
-        var container = encoder.container(keyedBy: CodingKeys.self)
-        try? container.encodeIfPresent(key, forKey: .key)
-        if let value {
-            try? container.encodeIfPresent(AnyEncodable(value), forKey: .value)
-        }
-        if let payload {
-            try? container.encodeIfPresent(AnyEncodable(payload), forKey: .payload)
-        }
-        if let metadata {
-            try? container.encodeIfPresent(AnyEncodable(metadata), forKey: .metadata)
-        }
+        self.value = try? container.decodeIfPresent(JSONValue.self, forKey: .value)
+        self.payload = try? container.decodeIfPresent(JSONValue.self, forKey: .payload)
+        self.metadata = try? container.decode([String: JSONValue].self, forKey: .metadata)
     }
 }

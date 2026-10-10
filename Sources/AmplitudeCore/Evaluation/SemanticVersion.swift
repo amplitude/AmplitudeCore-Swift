@@ -20,32 +20,30 @@ struct SemanticVersion: Comparable {
     let patch: Int
     let preRelease: String?
 
-    static func parse(version: String?) -> SemanticVersion? {
-        guard let version else {
+    // NSRegularExpression is thread-safe, so one instance serves every evaluation.
+    private static let regex = try? NSRegularExpression(pattern: VERSION_PATTERN)
+
+    static func parse(version: String) -> SemanticVersion? {
+        // NSRange counts UTF-16 units, not characters.
+        guard let regex, let match = regex.firstMatch(in: version, range: NSRange(version.startIndex..., in: version)) else {
             return nil
         }
-        guard let regex = try? NSRegularExpression(pattern: VERSION_PATTERN) else {
+        let captureGroups: [String?] = (0..<match.numberOfRanges).map { index in
+            Range(match.range(at: index), in: version).map { String(version[$0]) }
+        }
+        // A component too large for an Int makes the value a non-version, which then compares as a string;
+        // only an absent patch means 0.
+        guard let major = captureGroups[1].flatMap({ Int($0) }), let minor = captureGroups[2].flatMap({ Int($0) }) else {
             return nil
         }
-        let matches = regex.matches(in: version, range: NSRange(0..<version.count))
-        guard let match = matches.first else {
-            return nil
-        }
-        var captureGroups: [String?] = []
-        for rangeIndex in 0..<match.numberOfRanges {
-            let matchRange = match.range(at: rangeIndex)
-            if let substringRange = Range(matchRange, in: version) {
-                captureGroups.append(String(version[substringRange]))
-            } else {
-                captureGroups.append(nil)
+        var patch = 0
+        if let patchText = captureGroups[4] {
+            guard let value = Int(patchText) else {
+                return nil
             }
+            patch = value
         }
-        guard let major = Int(string: captureGroups[1]), let minor = Int(string: captureGroups[2]) else {
-            return nil
-        }
-        let patch = Int(string: captureGroups[4]) ?? 0
-        let preRelease = captureGroups[5]
-        return SemanticVersion(major: major, minor: minor, patch: patch, preRelease: preRelease)
+        return SemanticVersion(major: major, minor: minor, patch: patch, preRelease: captureGroups[5])
     }
 
     static func < (lhs: SemanticVersion, rhs: SemanticVersion) -> Bool {
@@ -67,14 +65,5 @@ struct SemanticVersion: Comparable {
         default:
             return false
         }
-    }
-}
-
-private extension Int {
-    init?(string: String?) {
-        guard let string else {
-            return nil
-        }
-        self.init(string)
     }
 }

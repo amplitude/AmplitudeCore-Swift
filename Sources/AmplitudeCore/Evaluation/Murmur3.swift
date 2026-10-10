@@ -3,108 +3,79 @@
 //  AmplitudeCore
 //
 //  Created by Brian Giori on 9/11/23.
-//  Ported from experiment-ios-client v1.20.3 (Sources/Experiment/Murmur3.swift).
+//  Adapted from experiment-ios-client v1.20.3 (Sources/Experiment/Murmur3.swift).
 //
 
-import Foundation
+extension Hash {
 
-private let C1_32 = UInt32(bitPattern: -0x3361d2af)
-private let C2_32: UInt32 = 0x1b873593
-private let R1_32: UInt32 = 15
-private let R2_32: UInt32 = 13
-private let M_32: UInt32 = 5
-private let N_32 = UInt32(bitPattern: -0x19ab949c)
-
-extension String {
-    func murmurHash32x86(seed: Int) -> UInt32? {
-        self.data(using: .utf8)?.murmurHash32x86(seed: seed)
+    /// MurmurHash3 x86 32-bit of the string's UTF-8 bytes, which experiment-core uses to bucket.
+    static func murmur3x86_32(_ s: String, seed: UInt32 = 0) -> UInt32 {
+        return Murmur3x86_32.hash(s, seed: seed)
     }
-}
 
-extension Data {
+    enum Murmur3x86_32 {
 
-    func murmurHash32x86(seed: Int) -> UInt32 {
-        let length = self.count
-        var hash = UInt32(seed)
-        let nBlocks = length >> 2
+        private static let C1: UInt32 = 0xcc9e2d51
+        private static let C2: UInt32 = 0x1b873593
+        private static let M: UInt32 = 5
+        private static let N: UInt32 = 0xe6546b64
 
-        // body
-        for i in 0..<nBlocks {
-            let index = i << 2
-            let k = self.readIntLe(index: index)
-            hash = mix32(k: k, hash: hash)
+        @inline(__always)
+        private static func rotl(_ x: UInt32, _ r: UInt32) -> UInt32 {
+            (x << r) | (x >> (32 - r))
         }
 
-        // tail
-        let index = nBlocks << 2
-        var k1: UInt32 = 0
-        switch length - index {
-        case 3:
-            k1 ^= UInt32(self[index + 2]) << 16
-            k1 ^= UInt32(self[index + 1]) << 8
-            k1 ^= UInt32(self[index])
-            k1 &*= C1_32
-            k1 = k1.rotateLeft(n: R1_32)
-            k1 &*= C2_32
-            hash ^= k1
-        case 2:
-            k1 ^= UInt32(self[index + 1]) << 8
-            k1 ^= UInt32(self[index])
-            k1 &*= C1_32
-            k1 = k1.rotateLeft(n: R1_32)
-            k1 &*= C2_32
-            hash ^= k1
-        case 1:
-            k1 ^= UInt32(self[index])
-            k1 &*= C1_32
-            k1 = k1.rotateLeft(n: R1_32)
-            k1 &*= C2_32
-            hash ^= k1
-        default:
-            break
+        @inline(__always)
+        private static func scramble(_ k: UInt32) -> UInt32 {
+            rotl(k &* C1, 15) &* C2
         }
-        hash ^= UInt32(length)
-        return fmix32(hash: hash)
-    }
-}
 
-private func mix32(k: UInt32, hash: UInt32) -> UInt32 {
-    var kResult = k
-    var hashResult = hash
-    kResult &*= C1_32
-    kResult = kResult.rotateLeft(n: R1_32)
-    kResult &*= C2_32
-    hashResult ^= kResult
-    hashResult = hashResult.rotateLeft(n: R2_32)
-    hashResult &*= M_32
-    return hashResult &+ N_32
-}
-
-private func fmix32(hash: UInt32) -> UInt32 {
-    var hashResult = hash
-    hashResult ^= hashResult >> 16
-    hashResult &*= UInt32(bitPattern: -0x7a143595)
-    hashResult ^= hashResult >> 13
-    hashResult &*= UInt32(bitPattern: -0x3d4d51cb)
-    hashResult ^= hashResult >> 16
-    return hashResult
-}
-
-private extension UInt32 {
-
-    func rotateLeft(n: UInt32, width: UInt32 = 32) -> UInt32 {
-        var un: UInt32 = n
-        if n > width {
-            un = un % width
+        @inline(__always)
+        private static func fmix(_ h: UInt32) -> UInt32 {
+            var x = h
+            x ^= x >> 16
+            x &*= 0x85ebca6b
+            x ^= x >> 13
+            x &*= 0xc2b2ae35
+            x ^= x >> 16
+            return x
         }
-        let mask: UInt32 = (0xffffffff << (width &- un))
-        let r = (self & mask) >> (width &- un)
-        return (self << un) | r
-    }
-}
 
-private extension Data {
-    func readIntLe(index: Int) -> UInt32 {
-        return UInt32(self[index]) | UInt32(self[index + 1]) << 8 | UInt32(self[index + 2]) << 16 | UInt32(self[index + 3]) << 24
+        static func hash(_ string: String, seed: UInt32 = 0) -> UInt32 {
+            let bytes = Array(string.utf8)
+            let len = bytes.count
+            var h = seed
+            var index = 0
+
+            // 4-byte blocks
+            while index <= len - 4 {
+                h ^= scramble(read32(bytes, index))
+                h = rotl(h, 13) &* M &+ N
+                index += 4
+            }
+
+            // remaining bytes, little-endian
+            var k: UInt32 = 0
+            var shift: UInt32 = 0
+            while index < len {
+                k |= UInt32(bytes[index]) << shift
+                shift += 8
+                index += 1
+            }
+            if shift > 0 {
+                h ^= scramble(k)
+            }
+
+            h ^= UInt32(len)
+            return fmix(h)
+        }
+
+        @inline(__always)
+        private static func read32(_ bytes: [UInt8], _ i: Int) -> UInt32 {
+            UInt32(bytes[i])
+            | UInt32(bytes[i + 1]) << 8
+            | UInt32(bytes[i + 2]) << 16
+            | UInt32(bytes[i + 3]) << 24
+        }
     }
 }
