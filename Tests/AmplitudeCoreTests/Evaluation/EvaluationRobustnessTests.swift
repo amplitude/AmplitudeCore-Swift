@@ -172,7 +172,7 @@ final class EvaluationRobustnessTests: XCTestCase {
 
     func testUnrepresentableValuesDoNotCrash() throws {
         let values: [Any] = [Date(), Data([1]), URL(string: "https://amplitude.com")!, NSObject(),
-                             ["when": Date()], [Date()]]
+                             ["when": Date()], [Date()], ["ratio": Double.nan], [[Double.infinity]]]
         for value in values {
             for op in ["is", "is not", "contains", "set contains", "greater", "regex match"] {
                 let flag = try conditionFlag(op, ["x"])
@@ -189,14 +189,18 @@ final class EvaluationRobustnessTests: XCTestCase {
     // MARK: - Numbers
 
     func testNumbersCompareAsJavaScriptStrings() throws {
-        // One value of each kind; JavaScriptNumberTests covers the formatting itself.
+        // Expected strings are JS `String(value)`.
         let cases: [(Any, String)] = [
-            (0.1, "0.1"), (1.0, "1"), (Float(0.1), "0.1"), (Decimal(string: "19.99")!, "19.99"),
-            (Int64.max, "9223372036854776000"), (Double.nan, "NaN"), (true, "true"),
+            (0.1, "0.1"), (9.99, "9.99"), (1.0, "1"), (-0.0, "0"), (-2.5, "-2.5"), (0.1 + 0.2, "0.30000000000000004"),
+            (Int64(1_726_380_000_000), "1726380000000"), (Float(0.1), "0.1"), (Float(16_777_216), "16777216"),
+            (CGFloat(4.5), "4.5"), (Decimal(string: "19.99")!, "19.99"), (NSDecimalNumber(string: "0.729"), "0.729"),
+            (true, "true"), (NSNumber(value: false), "false"),
         ]
         for (value, string) in cases {
             XCTAssertEqual(evaluate(try conditionFlag("is", [string]), properties(["p": value])), "on", "\(value)")
         }
+        // JS writes 0.00001; rules do not hold numbers this small.
+        XCTAssertEqual(evaluate(try conditionFlag("is", ["1e-05"]), properties(["p": 0.00001])), "on")
     }
 
     func testDecimalsDoNotPickUpBinaryRoundingErrors() throws {
@@ -207,10 +211,15 @@ final class EvaluationRobustnessTests: XCTestCase {
     }
 
     func testNumbersFromJSONAndInArrays() throws {
+        // Numbers arriving through JSON, as from Flutter or React Native.
         let json = try XCTUnwrap(
-            JSONSerialization.jsonObject(with: Data(#"{"price":9.99,"tags":[0.1,1.0]}"#.utf8)) as? [String: Any])
+            JSONSerialization.jsonObject(with: Data(#"{"price":9.99,"tags":[0.1,1.0],"long":0.1234567890123456789}"#.utf8))
+                as? [String: Any])
         XCTAssertEqual(evaluate(try conditionFlag("is", ["9.99"]), properties(["p": json["price"] as Any])), "on")
         XCTAssertEqual(evaluate(try conditionFlag("set is", ["0.1", "1"]), properties(["p": json["tags"] as Any])), "on")
+        // JSONSerialization returns NSDecimalNumber for mantissas beyond 17 digits.
+        XCTAssertEqual(evaluate(try conditionFlag("is", ["0.12345678901234568"]), properties(["p": json["long"] as Any])),
+                       "on")
     }
 
     func testNumericOperatorsNeverMatchNonNumbers() throws {
@@ -222,13 +231,11 @@ final class EvaluationRobustnessTests: XCTestCase {
         XCTAssertEqual(evaluate(try conditionFlag("less", ["abc"]), properties(["p": 5])), "off")
         XCTAssertEqual(evaluate(try conditionFlag("greater", ["2026-01-01"]), properties(["p": "2026-10-06"])), "off")
         XCTAssertEqual(evaluate(try conditionFlag("greater", ["NaN"]), properties(["p": "NaN"])), "off")
-        // Swift's `Double(_:)` reads these as numbers; JS `Number()` does not.
-        for value in ["inf", "infinity", "0x1p4"] {
+        // Not numbers: infinity and NaN, which Swift's `Double(_:)` reads, and blank text, which JS reads as 0.
+        for value in ["inf", "infinity", "nan", "", " "] {
             XCTAssertEqual(evaluate(try conditionFlag("greater", ["1"]), properties(["p": value])), "off", value)
+            XCTAssertEqual(evaluate(try conditionFlag("less", [value]), properties(["p": 1])), "off", value)
         }
-        // JS reads unsigned 0x / 0o / 0b integers, on either side.
-        XCTAssertEqual(evaluate(try conditionFlag("greater", ["15"]), properties(["p": "0x10"])), "on")
-        XCTAssertEqual(evaluate(try conditionFlag("less", ["0b11"]), properties(["p": 2])), "on")
         // Filter values that are not numbers are skipped; the others still compare.
         XCTAssertEqual(evaluate(try conditionFlag("greater", ["abc", "10"]), properties(["p": 12])), "on")
         // Version operators still fall back to comparing strings when a value is not a version.
@@ -263,23 +270,21 @@ final class EvaluationRobustnessTests: XCTestCase {
         XCTAssertEqual(evaluate(try conditionFlag("is", [""]), properties(["p": ""])), "on")
     }
 
-    func testObjectsStringifyLikeJavaScript() throws {
-        // Expected strings are JS `JSON.stringify` of the same values.
+    func testObjectsCompareAsJSON() throws {
+        // Expected strings are JS `JSON.stringify` of the same values, apart from the sorted keys.
         let cases: [(Any, String)] = [
-            (["n": 0.1], #"{"n":0.1}"#),
-            (["ratio": Double.nan], #"{"ratio":null}"#),
-            (["q": "a\"b\\c\n\u{01}/"], #"{"q":"a\"b\\c\n\u0001/"}"#),
-            (["q": "\u{08}\u{0C}\r\t"], #"{"q":"\b\f\r\t"}"#),
-            (["a": true, "b": NSNull(), "c": [1, "x"]] as [String: Any], #"{"a":true,"b":null,"c":[1,"x"]}"#),
-            (["big": Int64.max], #"{"big":9223372036854776000}"#),
+            (["q": "a\"b\\c\n\u{01}/\u{08}\u{0C}\r\t"], #"{"q":"a\"b\\c\n\u0001/\b\f\r\t"}"#),
+            (["c": [1, "x"], "b": NSNull(), "a": true] as [String: Any], #"{"a":true,"b":null,"c":[1,"x"]}"#),
         ]
         for (value, json) in cases {
             XCTAssertEqual(evaluate(try conditionFlag("is", [json]), properties(["p": value])), "on", json)
         }
-        XCTAssertEqual(evaluate(try conditionFlag("set is", ["[0.1]"]), properties(["p": [[0.1]]])), "on")
-        // "/" is not escaped, on every OS version.
+        XCTAssertEqual(evaluate(try conditionFlag("set is", [#"["a",1]"#]), properties(["p": [["a", 1]]])), "on")
         XCTAssertEqual(evaluate(try conditionFlag("contains", ["https://amplitude.com/a"]),
                                 properties(["p": ["url": "https://amplitude.com/a"]])), "on")
+        // JS writes {"n":0.1}; rules do not compare decimals inside objects.
+        XCTAssertEqual(evaluate(try conditionFlag("is", [#"{"n":0.10000000000000001}"#]), properties(["p": ["n": 0.1]])),
+                       "on")
     }
 
     // MARK: - Helpers

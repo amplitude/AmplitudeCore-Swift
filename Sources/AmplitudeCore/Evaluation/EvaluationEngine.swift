@@ -4,7 +4,8 @@
 //
 //  Created by Brian Giori on 9/11/23.
 //  Adapted from experiment-ios-client v1.20.3 (Sources/Experiment/EvaluationEngine.swift). It deliberately
-//  differs in how values become strings (as JS), numeric operators (numbers only) and bucket ranges (no traps).
+//  differs in how numbers become strings (as JS for the values rules hold), numeric operators (numbers only) and
+//  bucket ranges (no traps).
 //
 
 import Foundation
@@ -224,11 +225,11 @@ public final class EvaluationEngine: Sendable {
     /// becomes NaN. Falling back to comparing strings, as the version operators do, would make "N/A" greater
     /// than 100, since letters sort after digits.
     private func matchesNumber(propValue: String, op: String, filterValues: Set<String>) -> Bool {
-        guard let propNumber = JavaScriptNumber.parse(propValue) else {
+        guard let propNumber = parseNumber(propValue) else {
             return false
         }
         return filterValues.contains { filterValue in
-            guard let filterNumber = JavaScriptNumber.parse(filterValue) else {
+            guard let filterNumber = parseNumber(filterValue) else {
                 return false
             }
             return matchesComparable(propValue: propNumber, op: op, filterValue: filterNumber)
@@ -292,70 +293,51 @@ public final class EvaluationEngine: Sendable {
         case is NSNull:
             return nil
         case let number as NSNumber:
-            // As JS `String(value)`, so that 0.1 matches "0.1" rather than "0.10000000000000001".
-            return JavaScriptNumber.string(number)
+            return numberString(number)
         default:
-            // Arrays and dictionaries become JSON, as with JS `JSON.stringify`. Values JSON cannot represent, such
-            // as Date, have no string form.
-            return javaScriptJSON(value: value)
+            return jsonString(value: value)
         }
     }
 
-    /// JSON text as JS `JSON.stringify` writes it: numbers as JS `String()`, non-finite numbers as null, "/" not
-    /// escaped. Dictionaries have no order, so keys are sorted where JS would keep insertion order. Returns nil when
-    /// the value contains something JSON cannot represent. JSONSerialization is not used: it prints 0.1 as
-    /// 0.10000000000000001, escapes "/" before iOS 13, and raises an uncatchable exception on such values.
-    private func javaScriptJSON(value: Any) -> String? {
-        switch value {
-        case let string as String:
-            return javaScriptJSONString(string)
-        case is NSNull:
-            return "null"
-        case let number as NSNumber:
-            if !number.doubleValue.isFinite {
-                return "null"
-            }
-            return JavaScriptNumber.string(number)
-        case let array as NSArray:
-            var elements: [String] = []
-            for element in array {
-                guard let json = javaScriptJSON(value: element) else {
-                    return nil
-                }
-                elements.append(json)
-            }
-            return "[" + elements.joined(separator: ",") + "]"
-        case let dictionary as NSDictionary:
-            var members: [(key: String, json: String)] = []
-            for (key, element) in dictionary {
-                guard let key = key as? String, let json = javaScriptJSON(value: element) else {
-                    return nil
-                }
-                members.append((key, json))
-            }
-            members.sort { $0.key < $1.key }
-            return "{" + members.map { javaScriptJSONString($0.key) + ":" + $0.json }.joined(separator: ",") + "}"
-        default:
+    /// A number as JS `String(value)` writes the values rules hold, so that 1.0 matches "1" and 0.1 matches "0.1":
+    /// integers without a fraction, other numbers with the shortest digits that read back as the same value. JS
+    /// differs only at the extremes, writing 0.00001 and 1e21 where this writes 1e-05 and 1e+21.
+    private func numberString(_ number: NSNumber) -> String {
+        if CFGetTypeID(number) == CFBooleanGetTypeID() {
+            return number.boolValue ? "true" : "false"
+        }
+        if let integer = Int64(exactly: number) {
+            return String(integer)
+        }
+        // Float and Decimal keep the digits they are written with (0.1, not 0.10000000149011612), which is what
+        // Amplitude-Swift uploads and a customer copies into a rule.
+        return number.digitPreservingDoubleValue.description
+    }
+
+    /// Arrays and dictionaries as JSON text, with sorted keys. Values JSON cannot represent, such as Date, have no
+    /// string form: JSONSerialization raises an exception Swift cannot catch on them. Unlike JS, numbers inside are
+    /// written with 17 digits (0.10000000000000001).
+    private func jsonString(value: Any) -> String? {
+        guard JSONSerialization.isValidJSONObject(value) else {
             return nil
         }
+        var options: JSONSerialization.WritingOptions = .sortedKeys
+        if #available(macOS 10.15, iOS 13.0, tvOS 13.0, watchOS 6.0, *) {
+            options.insert(.withoutEscapingSlashes)
+        }
+        guard let data = try? JSONSerialization.data(withJSONObject: value, options: options) else {
+            return nil
+        }
+        return String(decoding: data, as: UTF8.self)
     }
 
-    private func javaScriptJSONString(_ string: String) -> String {
-        var result = "\""
-        for scalar in string.unicodeScalars {
-            switch scalar {
-            case "\"": result += "\\\""
-            case "\\": result += "\\\\"
-            case "\u{08}": result += "\\b"
-            case "\u{0C}": result += "\\f"
-            case "\n": result += "\\n"
-            case "\r": result += "\\r"
-            case "\t": result += "\\t"
-            case _ where scalar.value < 0x20: result += String(format: "\\u%04x", scalar.value)
-            default: result.unicodeScalars.append(scalar)
-            }
+    /// A rule or property value as a number, read by Swift's `Double(_:)` after trimming whitespace. Blank text (0 in
+    /// JS) and infinite or NaN values ("inf", "nan") are not numbers.
+    private func parseNumber(_ text: String) -> Double? {
+        guard let number = Double(text.trimmingCharacters(in: .whitespacesAndNewlines)), number.isFinite else {
+            return nil
         }
-        return result + "\""
+        return number
     }
 
     private func coerceStringList(value: Any?) -> Set<String>? {
