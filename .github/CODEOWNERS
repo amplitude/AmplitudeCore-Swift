@@ -1,0 +1,3 @@
+# SDK maintainers own all files, including GitHub Actions workflows, release
+# automation, Swift/CocoaPods/Carthage package metadata, and CODEOWNERS itself.
+* @amplitude/dx
