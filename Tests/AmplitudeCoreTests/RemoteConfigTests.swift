@@ -21,7 +21,7 @@ final class RemoteConfigTests: XCTestCase {
         httpClient.responseHandler = { request in
             let components = request.url.flatMap { URLComponents(url: $0, resolvingAgainstBaseURL: false) }
             XCTAssertEqual(components?.queryItems, [URLQueryItem(name: "config_group", value: "ios")])
-            return TestRemoteConfigHandler.successResponseHandler()(request)
+            return await TestRemoteConfigHandler.successResponseHandler()(request)
         }
 
         let remoteConfigClient = makeRemoteConfigClient()
@@ -40,7 +40,13 @@ final class RemoteConfigTests: XCTestCase {
         let cachedConfig: RemoteConfigClient.RemoteConfig = ["cached": 1]
         let cachedConfigLastFetch = Date.distantPast
         let remoteConfig: RemoteConfigClient.RemoteConfig = ["remote": 1]
-        httpClient.responseHandler = TestRemoteConfigHandler.successResponseHandler(remoteConfig)
+        let didReceiveCachedConfig = XCTestExpectation(description: "received cached config")
+        httpClient.responseHandler = { request in
+            // The client may skip cache delivery when the remote response wins the race.
+            // Hold that response until this test has observed the cached value.
+            await self.fulfillment(of: [didReceiveCachedConfig], timeout: 3)
+            return await TestRemoteConfigHandler.successResponseHandler(remoteConfig)(request)
+        }
 
         let storage = RemoteConfigInMemoryStorage()
         try await storage.setConfig(RemoteConfigClient.RemoteConfigInfo(config: cachedConfig,
@@ -56,6 +62,7 @@ final class RemoteConfigTests: XCTestCase {
             case .cache:
                 XCTAssertEqual(config as? NSDictionary, cachedConfig as NSDictionary)
                 XCTAssertEqual(lastFetch, cachedConfigLastFetch)
+                didReceiveCachedConfig.fulfill()
             case .remote:
                 XCTAssertEqual(config as? NSDictionary, remoteConfig as NSDictionary)
                 XCTAssertNotEqual(lastFetch, cachedConfigLastFetch)
@@ -76,7 +83,7 @@ final class RemoteConfigTests: XCTestCase {
         didSendRemoteRequestExpectation.expectedFulfillmentCount = RemoteConfigClient.Config.maxRetries
         httpClient.responseHandler = { request in
             didSendRemoteRequestExpectation.fulfill()
-            return TestRemoteConfigHandler.errorResponseHandler(statusCode: 500)(request)
+            return await TestRemoteConfigHandler.errorResponseHandler(statusCode: 500)(request)
         }
 
         let storage = RemoteConfigInMemoryStorage()
@@ -109,7 +116,7 @@ final class RemoteConfigTests: XCTestCase {
         didSendRemoteRequestExpectation.expectedFulfillmentCount = RemoteConfigClient.Config.maxRetries
         httpClient.responseHandler = { request in
             didSendRemoteRequestExpectation.fulfill()
-            return TestRemoteConfigHandler.errorResponseHandler(statusCode: 500)(request)
+            return await TestRemoteConfigHandler.errorResponseHandler(statusCode: 500)(request)
         }
 
         let storage = RemoteConfigInMemoryStorage()
@@ -142,7 +149,7 @@ final class RemoteConfigTests: XCTestCase {
             } else {
                 didRetryExpectation.fulfill()
             }
-            return TestRemoteConfigHandler.errorResponseHandler(statusCode: 400)(request)
+            return await TestRemoteConfigHandler.errorResponseHandler(statusCode: 400)(request)
         }
 
         let storage = RemoteConfigInMemoryStorage()
@@ -179,7 +186,7 @@ final class RemoteConfigTests: XCTestCase {
             } else {
                 didRetryExpectation.fulfill()
             }
-            return TestRemoteConfigHandler.errorResponseHandler(statusCode: 401)(request)
+            return await TestRemoteConfigHandler.errorResponseHandler(statusCode: 401)(request)
         }
 
         let storage = RemoteConfigInMemoryStorage()
@@ -219,7 +226,7 @@ final class RemoteConfigTests: XCTestCase {
             } else {
                 didRetryExpectation.fulfill()
             }
-            return TestRemoteConfigHandler.errorResponseHandler(statusCode: 403)(request)
+            return await TestRemoteConfigHandler.errorResponseHandler(statusCode: 403)(request)
         }
 
         let storage = RemoteConfigInMemoryStorage()
@@ -251,9 +258,9 @@ final class RemoteConfigTests: XCTestCase {
         httpClient.responseHandler = { request in
             requestCount += 1
             if requestCount == 1 {
-                return TestRemoteConfigHandler.errorResponseHandler(statusCode: 429)(request)
+                return await TestRemoteConfigHandler.errorResponseHandler(statusCode: 429)(request)
             }
-            return TestRemoteConfigHandler.successResponseHandler(remoteConfig)(request)
+            return await TestRemoteConfigHandler.successResponseHandler(remoteConfig)(request)
         }
 
         let storage = RemoteConfigInMemoryStorage()
@@ -364,7 +371,7 @@ final class RemoteConfigTests: XCTestCase {
         httpClient.responseHandler = { request in
             Thread.sleep(forTimeInterval: 2)
             didSendRemoteRequestExpectation.fulfill()
-            return TestRemoteConfigHandler.successResponseHandler()(request)
+            return await TestRemoteConfigHandler.successResponseHandler()(request)
         }
 
         let cachedRemoteConfigInfo = RemoteConfigClient.RemoteConfigInfo(config: ["cached": 1],
@@ -679,7 +686,7 @@ final class RemoteConfigInMemoryStorage: RemoteConfigStorage, @unchecked Sendabl
 // A basic echo response that returns {"config": true} for every requested config
 
 final class TestRemoteConfigHandler: HttpClient, @unchecked Sendable {
-    typealias ResponseHandler = (URLRequest) -> (URLResponse, Data?)
+    typealias ResponseHandler = (URLRequest) async -> (URLResponse, Data?)
 
     private let lock = NSLock()
     private var handler: ResponseHandler?
@@ -711,7 +718,7 @@ final class TestRemoteConfigHandler: HttpClient, @unchecked Sendable {
             return components?.url?.absoluteString
         }
         XCTAssertEqual(baseUrl, "\(RemoteConfigTests.serverUrl)/\(RemoteConfigTests.apiKey)")
-        let (response, data) = responseHandler(request)
+        let (response, data) = await responseHandler(request)
         return (data ?? Data(), response)
     }
 
