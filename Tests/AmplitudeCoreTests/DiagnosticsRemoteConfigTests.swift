@@ -320,8 +320,8 @@ final class DiagnosticsRemoteConfigTests: XCTestCase {
             apiKey: Self.testApiKey,
             serverUrl: "http://test.amplitude.com",
             storage: TestRemoteConfigStorage.shared,
-            urlSessionConfiguration: TestRemoteConfigUrlProtocol.testSessionConfiguration,
-            maxRetryDelay: 0.1
+            maxRetryDelay: 0.1,
+            httpClient: URLSessionHttpClient(session: URLSession(configuration: TestRemoteConfigUrlProtocol.testSessionConfiguration))
         )
     }
 

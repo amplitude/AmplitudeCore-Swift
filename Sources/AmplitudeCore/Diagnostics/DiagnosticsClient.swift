@@ -22,7 +22,7 @@ public actor DiagnosticsClient: CoreDiagnostics {
     private let apiKey: String
     private let logger: CoreLogger
     let storage: DiagnosticsStorage
-    private let urlSession: URLSession
+    private let httpClient: any HttpClient
     private let serverUrl: String
     private let startTimestamp: TimeInterval
     private let flushIntervalNanoSec: UInt64
@@ -55,13 +55,35 @@ public actor DiagnosticsClient: CoreDiagnostics {
                 remoteConfigClient: RemoteConfigClient?,
                 flushIntervalNanoSec: UInt64 = DEFAULT_FLUSH_INTERVAL * NSEC_PER_SEC,
                 urlSessionConfiguration: URLSessionConfiguration = .ephemeral) {
+        self.init(apiKey: apiKey,
+                  serverZone: serverZone,
+                  instanceName: instanceName,
+                  logger: logger,
+                  enabled: enabled,
+                  sampleRate: sampleRate,
+                  crashCaptureEnabled: crashCaptureEnabled,
+                  remoteConfigClient: remoteConfigClient,
+                  flushIntervalNanoSec: flushIntervalNanoSec,
+                  httpClient: URLSessionHttpClient(session: URLSession(configuration: urlSessionConfiguration)))
+    }
+
+    public init(apiKey: String,
+                serverZone: ServerZone = .US,
+                instanceName: String,
+                logger: CoreLogger = OSLogger(logLevel: .error),
+                enabled: Bool = true,
+                sampleRate: Double = DEFAULT_SAMPLE_RATE,
+                crashCaptureEnabled: Bool = false, // unused, but removal is a breaking change.
+                remoteConfigClient: RemoteConfigClient?,
+                flushIntervalNanoSec: UInt64 = DEFAULT_FLUSH_INTERVAL * NSEC_PER_SEC,
+                httpClient: any HttpClient) {
         let startTimestamp = Date().timeIntervalSince1970
         self.apiKey = apiKey
         self.logger = logger
         self.startTimestamp = startTimestamp
         self.flushIntervalNanoSec = flushIntervalNanoSec
         self.serverUrl = serverZone == .EU ? EU_SERVER_URL : US_SERVER_URL
-        self.urlSession = URLSession(configuration: urlSessionConfiguration)
+        self.httpClient = httpClient
 
         self.enabled = enabled
         let clampedSampleRate = max(0.0, min(1.0, sampleRate))
@@ -191,7 +213,7 @@ public actor DiagnosticsClient: CoreDiagnostics {
         request.setValue(String(describing: self.sampleRate), forHTTPHeaderField: "X-Client-Sample-Rate")
 
         do {
-            let (data, response) = try await self.urlSession.data(for: request)
+            let (data, response) = try await httpClient.data(for: request)
             guard let httpResponse = response as? HTTPURLResponse else {
                 return
             }

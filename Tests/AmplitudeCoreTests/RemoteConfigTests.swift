@@ -5,7 +5,7 @@
 //  Created by Chris Leonavicius on 1/16/25.
 //
 
-@testable import AmplitudeCore
+@_spi(Internal) @testable import AmplitudeCore
 import Foundation
 import XCTest
 
@@ -674,8 +674,8 @@ final class RemoteConfigTests: XCTestCase {
         return RemoteConfigClient(apiKey: Self.apiKey,
                                   serverUrl: Self.serverUrl,
                                   storage: storage,
-                                  urlSessionConfiguration: Self.testSessionConfiguration,
-                                  maxRetryDelay: 0.1)
+                                  maxRetryDelay: 0.1,
+                                  httpClient: URLSessionHttpClient(session: URLSession(configuration: Self.testSessionConfiguration)))
     }
 }
 

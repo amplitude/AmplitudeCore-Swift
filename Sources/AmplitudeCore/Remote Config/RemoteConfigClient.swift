@@ -77,7 +77,7 @@ public actor RemoteConfigClient: NSObject {
 
     private let apiKey: String
     private let serverUrl: String
-    private let urlSession: URLSession
+    private let httpClient: any HttpClient
     private let queue = DispatchQueue(label: "com.amplitude.sessionreplay.remoteconfig", target: .global())
     private let jsonDecoder = JSONDecoder()
     private let storage: RemoteConfigStorage
@@ -91,7 +91,8 @@ public actor RemoteConfigClient: NSObject {
     public init(apiKey: String,
                 serverZone: ServerZone,
                 instanceName: String? = nil,
-                logger: CoreLogger) {
+                logger: CoreLogger,
+                httpClient: (any HttpClient)? = nil) {
         let serverURL: String
         switch serverZone {
         case .US:
@@ -102,20 +103,21 @@ public actor RemoteConfigClient: NSObject {
         self.init(apiKey: apiKey,
                   serverUrl: serverURL,
                   logger: logger,
-                  storage: RemoteConfigUserDefaultsStorage(instanceName: instanceName))
+                  storage: RemoteConfigUserDefaultsStorage(instanceName: instanceName),
+                  httpClient: httpClient ?? URLSessionHttpClient())
     }
 
     init(apiKey: String,
          serverUrl: String,
          logger: CoreLogger = OSLogger(),
          storage: RemoteConfigStorage = RemoteConfigUserDefaultsStorage(),
-         urlSessionConfiguration: URLSessionConfiguration = .ephemeral,
-         maxRetryDelay: TimeInterval = Config.maxRetryDelay) {
+         maxRetryDelay: TimeInterval = Config.maxRetryDelay,
+         httpClient: any HttpClient) {
         self.apiKey = apiKey
         self.serverUrl = serverUrl
         self.logger = logger
         self.storage = storage
-        self.urlSession = URLSession(configuration: urlSessionConfiguration)
+        self.httpClient = httpClient
         self.maxRetryDelay = maxRetryDelay
 
         fetchLocalTask = Task {
@@ -131,8 +133,8 @@ public actor RemoteConfigClient: NSObject {
 
         super.init()
 
-        fetchRemoteTask = Task.detached { [urlSession, serverUrl, apiKey, maxRetryDelay, weak self] in
-            let config = try await Self.fetch(urlSession: urlSession,
+        fetchRemoteTask = Task.detached { [httpClient = self.httpClient, serverUrl, apiKey, maxRetryDelay, weak self] in
+            let config = try await Self.fetch(httpClient: httpClient,
                                               serverUrl: serverUrl,
                                               apiKey: apiKey,
                                               maxRetryDelay: maxRetryDelay)
@@ -296,8 +298,8 @@ public actor RemoteConfigClient: NSObject {
 
     @discardableResult
     private func _updateConfigs() -> Task<RemoteConfigInfo, Error> {
-        fetchRemoteTask = Task.detached { [urlSession, serverUrl, apiKey, maxRetryDelay, weak self] in
-            let config = try await Self.fetch(urlSession: urlSession,
+        fetchRemoteTask = Task.detached { [httpClient = self.httpClient, serverUrl, apiKey, maxRetryDelay, weak self] in
+            let config = try await Self.fetch(httpClient: httpClient,
                                               serverUrl: serverUrl,
                                               apiKey: apiKey,
                                               maxRetryDelay: maxRetryDelay)
@@ -324,20 +326,20 @@ public actor RemoteConfigClient: NSObject {
 
     // MARK: - Fetch
 
-    private static func fetch(urlSession: URLSession,
+    private static func fetch(httpClient: any HttpClient,
                               serverUrl: String,
                               apiKey: String,
                               maxRetryDelay: TimeInterval) async throws -> RemoteConfigInfo {
-        return try await fetch(urlSession: urlSession,
+        return try await fetch(httpClient: httpClient,
                                request: try makeRequest(serverUrl: serverUrl, apiKey: apiKey),
                                maxRetryDelay: maxRetryDelay)
     }
 
-    private static func fetch(urlSession: URLSession,
+    private static func fetch(httpClient: any HttpClient,
                               request: URLRequest,
                               maxRetryDelay: TimeInterval,
                               retries: Int = Config.maxRetries) async throws -> RemoteConfigInfo {
-        let (data, response) = try await urlSession.data(for: request)
+        let (data, response) = try await httpClient.data(for: request)
 
         if let httpResponse = response as? HTTPURLResponse,
            httpResponse.statusCode == 200,
@@ -370,7 +372,7 @@ public actor RemoteConfigClient: NSObject {
             let delayNs = delay * TimeInterval(NSEC_PER_SEC)
             try await Task.sleep(nanoseconds: UInt64(delayNs))
             try Task.checkCancellation()
-            return try await fetch(urlSession: urlSession,
+            return try await fetch(httpClient: httpClient,
                                    request: request,
                                    maxRetryDelay: maxRetryDelay,
                                    retries: retries - 1)
