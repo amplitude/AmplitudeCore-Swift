@@ -86,6 +86,7 @@ public actor RemoteConfigClient: NSObject {
 
     private var fetchLocalTask: Task<RemoteConfigInfo, Error>
     private var fetchRemoteTask: Task<RemoteConfigInfo, Error>
+    private var fetchedRemoteConfig: RemoteConfigInfo?
     private var callbacks: [CallbackInfo] = []
 
     public init(apiKey: String,
@@ -138,7 +139,7 @@ public actor RemoteConfigClient: NSObject {
                                               serverUrl: serverUrl,
                                               apiKey: apiKey,
                                               maxRetryDelay: maxRetryDelay)
-            try? await self?.storage.setConfig(config)
+            await self?.recordRemoteConfig(config)
             return config
         }
     }
@@ -174,11 +175,9 @@ public actor RemoteConfigClient: NSObject {
             switch callbackInfo.deliveryMode {
             case .all:
                 await withThrowingTaskGroup(of: (configInfo: RemoteConfigInfo, source: Source).self) { [fetchLocalTask, fetchRemoteTask] taskGroup in
-                    // send remote first, if it's already complete we can skip the cached response
                     taskGroup.addTask {
                         return (try await fetchRemoteTask.value, .remote)
                     }
-                    await Task.yield()
                     taskGroup.addTask {
                         return (try await fetchLocalTask.value, .cache)
                     }
@@ -187,10 +186,12 @@ public actor RemoteConfigClient: NSObject {
                         if case .success(let result) = taskGroupResult {
                             didSendCallback = true
 
-                            await self?.sendCallback(callbackInfo, configInfo: result.configInfo, source: result.source)
-
-                            // no need to send local callbacks if we already have remote
-                            if case .remote = result.source {
+                            // Check completed remote state on the actor rather than relying on
+                            // which child task the executor happens to schedule first.
+                            let deliveredRemote = await self?.sendInitialCallback(callbackInfo,
+                                                                                  configInfo: result.configInfo,
+                                                                                  source: result.source)
+                            if deliveredRemote == true {
                                 break
                             }
                         }
@@ -298,15 +299,33 @@ public actor RemoteConfigClient: NSObject {
 
     @discardableResult
     private func _updateConfigs() -> Task<RemoteConfigInfo, Error> {
+        fetchedRemoteConfig = nil
         fetchRemoteTask = Task.detached { [httpClient = self.httpClient, serverUrl, apiKey, maxRetryDelay, weak self] in
             let config = try await Self.fetch(httpClient: httpClient,
                                               serverUrl: serverUrl,
                                               apiKey: apiKey,
                                               maxRetryDelay: maxRetryDelay)
-            try? await self?.storage.setConfig(config)
+            await self?.recordRemoteConfig(config)
             return config
         }
         return fetchRemoteTask
+    }
+
+    private func recordRemoteConfig(_ config: RemoteConfigInfo) async {
+        try? await storage.setConfig(config)
+        fetchedRemoteConfig = config
+    }
+
+    /// Returns whether this subscription has received its remote result.
+    private func sendInitialCallback(_ callbackInfo: CallbackInfo,
+                                     configInfo: RemoteConfigInfo,
+                                     source: Source) -> Bool {
+        if case .cache = source, let fetchedRemoteConfig {
+            sendCallback(callbackInfo, configInfo: fetchedRemoteConfig, source: .remote)
+            return true
+        }
+        sendCallback(callbackInfo, configInfo: configInfo, source: source)
+        return source == .remote
     }
 
     private func sendCallback(_ callbackInfo: CallbackInfo, configInfo: RemoteConfigInfo?, source: Source) {

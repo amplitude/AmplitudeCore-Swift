@@ -287,28 +287,48 @@ final class RemoteConfigTests: XCTestCase {
 
     @available(macOS 10.15, iOS 13.0, watchOS 6.0, tvOS 13.0, *)
     func testAllDeliveryStrategy() async throws {
-        httpClient.responseHandler = TestRemoteConfigHandler.successResponseHandler()
+        let didReceiveCachedResponseExpecation = XCTestExpectation(description: "it did request cached config")
+        didReceiveCachedResponseExpecation.assertForOverFulfill = true
+        let releaseRemoteResponse = XCTestExpectation(description: "release remote response")
+        httpClient.responseHandler = { request in
+            await self.fulfillment(of: [releaseRemoteResponse], timeout: 3)
+            return await TestRemoteConfigHandler.successResponseHandler()(request)
+        }
+
+        let didReceiveRemoteResponseExpecation = XCTestExpectation(description: "it did request remote config")
+        didReceiveRemoteResponseExpecation.assertForOverFulfill = true
+
         let storage = RemoteConfigInMemoryStorage()
         try await storage.setConfig(.init(config: ["cached": 1], lastFetch: Date.distantPast))
+
         let remoteConfigClient = makeRemoteConfigClient(storage: storage)
 
-        // Cache delivery is optional: either fetch can win the initial race.
-        // Repeat after the remote fetch has completed to cover later subscribers too.
-        for _ in 0..<2 {
-            let remoteResponse = XCTestExpectation(description: "received remote config")
-            remoteResponse.assertForOverFulfill = true
-            let subscription = remoteConfigClient.subscribe(deliveryMode: .all) { config, source, _ in
-                switch source {
-                case .cache:
-                    XCTAssertEqual(config as? NSDictionary, ["cached": 1] as NSDictionary)
-                case .remote:
-                    XCTAssertEqual(config as? NSDictionary, ["config": true] as NSDictionary)
-                    remoteResponse.fulfill()
-                }
+        remoteConfigClient.subscribe(deliveryMode: .all) { config, source, _ in
+            switch source {
+            case .cache:
+                didReceiveCachedResponseExpecation.fulfill()
+                releaseRemoteResponse.fulfill()
+            case .remote:
+                didReceiveRemoteResponseExpecation.fulfill()
             }
-            await fulfillment(of: [remoteResponse], timeout: 3)
-            remoteConfigClient.unsubscribe(subscription)
         }
+
+        await fulfillment(of: [didReceiveCachedResponseExpecation, didReceiveRemoteResponseExpecation],
+                          timeout: 3,
+                          enforceOrder: true)
+
+        // Future fetches should just return the successful remote response
+        let subsequentFetchExpectation = XCTestExpectation(description: "subsequent fetch")
+        remoteConfigClient.subscribe(deliveryMode: .all) { config, source, _ in
+            switch source {
+            case .cache:
+                XCTFail("A completed remote fetch must take precedence over the cached result")
+            case .remote:
+                subsequentFetchExpectation.fulfill()
+            }
+        }
+
+        await fulfillment(of: [subsequentFetchExpectation], timeout: 3)
     }
 
     @available(macOS 10.15, iOS 13.0, watchOS 6.0, tvOS 13.0, *)
