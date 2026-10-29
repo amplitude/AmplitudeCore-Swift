@@ -86,6 +86,9 @@ final class HttpClientTests: XCTestCase {
     }
 
     func testHandlerCanModifyAndSendRequest() async throws {
+        #if os(watchOS)
+        throw XCTSkip("watchOS URLSession does not reliably intercept requests through URLProtocol")
+        #endif
         let config = URLSessionConfiguration.ephemeral
         config.protocolClasses = [HandlerURLProtocol.self]
         let session = URLSession(configuration: config)
@@ -103,6 +106,9 @@ final class HttpClientTests: XCTestCase {
     }
 
     func testDefaultTransportPreservesRequestBody() async throws {
+        #if os(watchOS)
+        throw XCTSkip("watchOS URLSession does not reliably intercept requests through URLProtocol")
+        #endif
         let config = URLSessionConfiguration.ephemeral
         config.protocolClasses = [HandlerURLProtocol.self]
         var sessionCreations = 0
