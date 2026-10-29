@@ -16,6 +16,7 @@ public struct AmplitudeContext {
     public let instanceName: String
     public let serverZone: ServerZone
     public let remoteConfigClient: RemoteConfigClient
+    public let httpClient: (any HttpClient)?
     public let logger: CoreLogger
 
     @_spi(Internal)
@@ -24,13 +25,15 @@ public struct AmplitudeContext {
     public init(apiKey: String,
                 instanceName: String = "$default_instance",
                 serverZone: ServerZone = .US,
-                logger: CoreLogger = OSLogger(logLevel: .error)) {
+                logger: CoreLogger = OSLogger(logLevel: .error),
+                httpClient: (any HttpClient)? = nil) {
         self.init(apiKey: apiKey,
                   instanceName: instanceName,
                   serverZone: serverZone,
                   logger: logger,
                   remoteConfigClient: nil,
-                  diagnosticsClient: nil)
+                  diagnosticsClient: nil,
+                  httpClient: httpClient)
     }
 
     @_spi(Internal)
@@ -39,20 +42,24 @@ public struct AmplitudeContext {
                 serverZone: ServerZone = .US,
                 logger: CoreLogger = OSLogger(logLevel: .error),
                 remoteConfigClient: RemoteConfigClient?,
-                diagnosticsClient: CoreDiagnostics?) {
+                diagnosticsClient: CoreDiagnostics?,
+                httpClient: (any HttpClient)? = nil) {
         self.apiKey = apiKey
         self.instanceName = instanceName
         self.serverZone = serverZone
         self.logger = logger
+        self.httpClient = httpClient
         self.remoteConfigClient = remoteConfigClient ?? RemoteConfigClient(apiKey: apiKey,
                                                                            serverZone: serverZone,
                                                                            instanceName: instanceName,
-                                                                           logger: logger)
+                                                                           logger: logger,
+                                                                           httpClient: httpClient)
         self.diagnosticsClient = diagnosticsClient ?? DiagnosticsClient(apiKey: apiKey,
                                                                         serverZone: serverZone,
                                                                         instanceName: instanceName,
                                                                         logger: logger,
-                                                                        remoteConfigClient: self.remoteConfigClient)
+                                                                        remoteConfigClient: self.remoteConfigClient,
+                                                                        httpClient: httpClient ?? URLSessionHttpClient())
     }
 
 }
