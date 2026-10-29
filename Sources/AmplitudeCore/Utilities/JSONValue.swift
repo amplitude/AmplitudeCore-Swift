@@ -68,7 +68,8 @@ public enum JSONValue: Codable, Sendable {
     /// Numbers are classified by their Core Foundation type instead of Swift casts. A bridged
     /// `NSNumber` (from `JSONSerialization`, Objective-C, or cross-platform bridges such as Flutter
     /// and React Native) succeeds `as? Bool` for any `0` or `1` and `as? Int` for whole doubles,
-    /// so cast order alone cannot tell `1`, `1.0` and `true` apart.
+    /// so cast order alone cannot tell `1`, `1.0` and `true` apart. A Float or a decimal number keeps the digits
+    /// it is written with (0.1, not 0.10000000149011612), as JSONEncoder writes it.
     ///
     /// Returns `nil` for values JSON cannot represent, such as non-finite numbers or unsupported
     /// types. Collections drop such elements.
@@ -99,7 +100,7 @@ public enum JSONValue: Codable, Sendable {
         if !isFloatingPoint, let intValue = Int(exactly: number) {
             return .int(intValue)
         }
-        let doubleValue = number.doubleValue
+        let doubleValue = number.digitPreservingDoubleValue
         return doubleValue.isFinite ? .double(doubleValue) : nil
     }
 
