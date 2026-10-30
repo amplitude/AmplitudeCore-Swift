@@ -1,0 +1,6 @@
+# Breakages that scripts/api/check.sh accepts, one exact swift-api-digester line per entry, e.g.
+#   ABI breakage: func CoreDiagnostics.getTags() has been added as a protocol requirement
+#   API breakage: func CoreDiagnostics.getTags() has been added as a protocol requirement
+# Copy the line from the check's output without the leading "error: ". Lines starting with # are ignored.
+# Every entry needs a comment saying why no released binary (Session Replay, Guides & Surveys, the Amplitude-Swift
+# xcframework zips) or source consumer is affected. Remove entries once the next release is the baseline.
