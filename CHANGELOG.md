@@ -1,3 +1,15 @@
+# [1.6.0](https://github.com/amplitude/AmplitudeCore-Swift/compare/v1.5.4...v1.6.0) (2026-10-30)
+
+
+### Bug Fixes
+
+* declare HttpClient concurrency availability ([#118](https://github.com/amplitude/AmplitudeCore-Swift/issues/118)) ([b4a9faf](https://github.com/amplitude/AmplitudeCore-Swift/commit/b4a9faf48f6f634995e281a9ff6f78998b40a53f))
+
+
+### Features
+
+* add shared async HTTP client interface ([#116](https://github.com/amplitude/AmplitudeCore-Swift/issues/116)) ([67ee4cb](https://github.com/amplitude/AmplitudeCore-Swift/commit/67ee4cb0ce1616640b70524c77fa31a03891d0d7))
+
 ## [1.5.4](https://github.com/amplitude/AmplitudeCore-Swift/compare/v1.5.3...v1.5.4) (2026-09-29)
 
 
