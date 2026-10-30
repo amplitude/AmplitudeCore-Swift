@@ -11,6 +11,8 @@ import XCTest
 @available(macOS 10.15, iOS 13.0, watchOS 6.0, tvOS 13.0, *)
 final class DiagnosticsRemoteConfigTests: XCTestCase {
 
+    private let httpClient = TestDiagnosticsHandler()
+
     static let testApiKey = "test-diagnostics-remote-config-key"
 
     override func setUp() {
@@ -25,13 +27,6 @@ final class DiagnosticsRemoteConfigTests: XCTestCase {
     override func tearDown() {
         AppEnvironment.overrideForTesting = nil
         super.tearDown()
-    }
-
-    /// Helper to skip tests that require URLProtocol on watchOS (where it doesn't work)
-    private func skipIfURLProtocolUnsupported() throws {
-        #if os(watchOS)
-        throw XCTSkip("URLProtocol-based network mocking is unreliable on watchOS")
-        #endif
     }
 
     // MARK: - Enable/Disable Tests
@@ -56,7 +51,7 @@ final class DiagnosticsRemoteConfigTests: XCTestCase {
             enabled: false,
             sampleRate: 1.0,
             remoteConfigClient: remoteConfigClient,
-            urlSessionConfiguration: TestDiagnosticsHandler.testSessionConfiguration
+            httpClient: httpClient
         )
 
         // Initially disabled
@@ -94,7 +89,7 @@ final class DiagnosticsRemoteConfigTests: XCTestCase {
             enabled: true,
             sampleRate: 1.0,
             remoteConfigClient: remoteConfigClient,
-            urlSessionConfiguration: TestDiagnosticsHandler.testSessionConfiguration
+            httpClient: httpClient
         )
 
         // Initially enabled
@@ -135,7 +130,7 @@ final class DiagnosticsRemoteConfigTests: XCTestCase {
             enabled: true,
             sampleRate: 0,
             remoteConfigClient: remoteConfigClient,
-            urlSessionConfiguration: TestDiagnosticsHandler.testSessionConfiguration
+            httpClient: httpClient
         )
 
         // Wait for remote config to be fetched and applied
@@ -170,7 +165,7 @@ final class DiagnosticsRemoteConfigTests: XCTestCase {
             enabled: false,
             sampleRate: 1.0, // Good sample rate locally
             remoteConfigClient: remoteConfigClient,
-            urlSessionConfiguration: TestDiagnosticsHandler.testSessionConfiguration
+            httpClient: httpClient
         )
 
         // Wait for remote config
@@ -204,7 +199,7 @@ final class DiagnosticsRemoteConfigTests: XCTestCase {
             enabled: true,
             sampleRate: 0,
             remoteConfigClient: remoteConfigClient,
-            urlSessionConfiguration: TestDiagnosticsHandler.testSessionConfiguration
+            httpClient: httpClient
         )
 
         // Wait for remote config
@@ -238,7 +233,7 @@ final class DiagnosticsRemoteConfigTests: XCTestCase {
             enabled: true,
             sampleRate: 1.0,
             remoteConfigClient: remoteConfigClient,
-            urlSessionConfiguration: TestDiagnosticsHandler.testSessionConfiguration
+            httpClient: httpClient
         )
 
         // Wait for remote config
@@ -253,12 +248,11 @@ final class DiagnosticsRemoteConfigTests: XCTestCase {
     }
 
     func testRemoteConfigSetsSDKVersionTag() async throws {
-        try skipIfURLProtocolUnsupported()
 
         var capturedRequest: URLRequest?
         let uploadExpectation = XCTestExpectation(description: "Data uploaded")
 
-        TestDiagnosticsHandler.responseHandler = { request in
+        httpClient.responseHandler = { request in
             capturedRequest = request
             uploadExpectation.fulfill()
             return TestDiagnosticsHandler.successResponseHandler()(request)
@@ -284,7 +278,7 @@ final class DiagnosticsRemoteConfigTests: XCTestCase {
             enabled: true,
             sampleRate: 1.0,
             remoteConfigClient: remoteConfigClient,
-            urlSessionConfiguration: TestDiagnosticsHandler.testSessionConfiguration
+            httpClient: httpClient
         )
 
         // Wait for remote config
@@ -300,7 +294,7 @@ final class DiagnosticsRemoteConfigTests: XCTestCase {
 
         // Verify SDK version tag was set
         guard let request = capturedRequest,
-              let data = extractBodyData(from: request),
+              let data = request.httpBody,
               let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
               let tags = json["tags"] as? [String: String] else {
             XCTFail("Failed to parse payload")
@@ -321,36 +315,10 @@ final class DiagnosticsRemoteConfigTests: XCTestCase {
             serverUrl: "http://test.amplitude.com",
             storage: TestRemoteConfigStorage.shared,
             maxRetryDelay: 0.1,
-            httpClient: URLSessionHttpClient(session: URLSession(configuration: TestRemoteConfigUrlProtocol.testSessionConfiguration))
+            httpClient: TestRemoteConfigHttpClient()
         )
     }
 
-    private func extractBodyData(from request: URLRequest) -> Data? {
-        if let body = request.httpBody {
-            return body
-        }
-
-        guard let bodyStream = request.httpBodyStream else {
-            return nil
-        }
-
-        bodyStream.open()
-        defer { bodyStream.close() }
-
-        var data = Data()
-        let bufferSize = 4096
-        let buffer = UnsafeMutablePointer<UInt8>.allocate(capacity: bufferSize)
-        defer { buffer.deallocate() }
-
-        while bodyStream.hasBytesAvailable {
-            let bytesRead = bodyStream.read(buffer, maxLength: bufferSize)
-            if bytesRead > 0 {
-                data.append(buffer, count: bytesRead)
-            }
-        }
-
-        return data
-    }
 }
 
 // MARK: - TestRemoteConfigStorage
@@ -386,52 +354,18 @@ final class TestRemoteConfigStorage: RemoteConfigStorage, @unchecked Sendable {
     }
 }
 
-// MARK: - TestRemoteConfigUrlProtocol
+// MARK: - TestRemoteConfigHttpClient
 
-class TestRemoteConfigUrlProtocol: URLProtocol {
-
-    static let testSessionConfiguration: URLSessionConfiguration = {
-        let configuration = URLSessionConfiguration.ephemeral
-        configuration.protocolClasses = [TestRemoteConfigUrlProtocol.self]
-        return configuration
-    }()
-
-    override class func canInit(with request: URLRequest) -> Bool {
-        return true
-    }
-
-    override class func canonicalRequest(for request: URLRequest) -> URLRequest {
-        return request
-    }
-
-    override func startLoading() {
-        guard let url = request.url else {
-            client?.urlProtocol(self, didFailWithError: NSError(domain: NSURLErrorDomain, code: NSURLErrorUnknown))
-            return
-        }
-
+final class TestRemoteConfigHttpClient: HttpClient {
+    func send(_ request: URLRequest) async throws -> (Data, URLResponse) {
+        guard let url = request.url else { throw URLError(.badURL) }
         let config = TestRemoteConfigStorage.shared.getNextConfig() ?? [:]
-
-        let response = HTTPURLResponse(
-            url: url,
-            statusCode: 200,
-            httpVersion: nil,
-            headerFields: ["Content-Type": "application/json"]
-        )!
-
-        let data = try? JSONSerialization.data(withJSONObject: ["configs": config])
-
-        DispatchQueue.global().asyncAfter(deadline: .now() + .milliseconds(100)) { [self] in
-            client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
-            if let data {
-                client?.urlProtocol(self, didLoad: data)
-            }
-            client?.urlProtocolDidFinishLoading(self)
-        }
-    }
-
-    override func stopLoading() {
-        // no-op
+        let response = HTTPURLResponse(url: url, statusCode: 200, httpVersion: nil,
+                                       headerFields: ["Content-Type": "application/json"])!
+        let data = try JSONSerialization.data(withJSONObject: ["configs": config])
+        // Let subscribers register before the initial fetch completes.
+        try await Task.sleep(nanoseconds: 100_000_000)
+        return (data, response)
     }
 }
 
@@ -463,14 +397,3 @@ extension RemoteConfigClient {
         return expectation
     }
 }
-
-// MARK: - TestDiagnosticsHandler Extension
-
-extension TestDiagnosticsHandler {
-    static let testSessionConfiguration: URLSessionConfiguration = {
-        let configuration = URLSessionConfiguration.ephemeral
-        configuration.protocolClasses = [TestDiagnosticsHandler.self]
-        return configuration
-    }()
-}
-

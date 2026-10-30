@@ -11,20 +11,13 @@ import XCTest
 @available(macOS 10.15, iOS 13.0, watchOS 6.0, tvOS 13.0, *)
 final class DiagnosticsClientTests: XCTestCase {
 
+    private let httpClient = TestDiagnosticsHandler()
+
     static let testApiKey = "test-diagnostics-api-key"
     var testInstanceName: String = ""
 
-    static let testSessionConfiguration: URLSessionConfiguration = {
-        let configuration = URLSessionConfiguration.ephemeral
-        #if !os(watchOS)
-        // URLProtocol doesn't work reliably on watchOS, so only set it on other platforms
-        configuration.protocolClasses = [TestDiagnosticsHandler.self]
-        #endif
-        return configuration
-    }()
-
     override func setUp() async throws {
-        TestDiagnosticsHandler.reset()
+        httpClient.reset()
         CrashCatcher.reset()
         // Pin the environment tag so uploaded payloads are deterministic
         // regardless of the test host (simulator, macOS, device).
@@ -35,13 +28,6 @@ final class DiagnosticsClientTests: XCTestCase {
     override func tearDown() {
         AppEnvironment.overrideForTesting = nil
         super.tearDown()
-    }
-
-    /// Helper to skip tests that require URLProtocol on watchOS (where it doesn't work)
-    private func skipIfURLProtocolUnsupported() throws {
-        #if os(watchOS)
-        throw XCTSkip("URLProtocol-based network mocking is unreliable on watchOS")
-        #endif
     }
 
     /// Leaves a session directory on disk the way a previous app launch would have.
@@ -62,7 +48,7 @@ final class DiagnosticsClientTests: XCTestCase {
     // MARK: - Initialization Tests
 
     func testInitializationWithSampledIn() async throws {
-        TestDiagnosticsHandler.responseHandler = TestDiagnosticsHandler.successResponseHandler()
+        httpClient.responseHandler = TestDiagnosticsHandler.successResponseHandler()
 
         let client = DiagnosticsClient(
             apiKey: Self.testApiKey,
@@ -70,7 +56,7 @@ final class DiagnosticsClientTests: XCTestCase {
             enabled: true,
             sampleRate: 1.0,
             remoteConfigClient: nil,
-            urlSessionConfiguration: Self.testSessionConfiguration
+            httpClient: httpClient
         )
 
         let isRunning = await client.shouldTrack
@@ -84,7 +70,7 @@ final class DiagnosticsClientTests: XCTestCase {
             enabled: true,
             sampleRate: 0.0,
             remoteConfigClient: nil,
-            urlSessionConfiguration: Self.testSessionConfiguration
+            httpClient: httpClient
         )
 
         let isRunning = await client.shouldTrack
@@ -98,7 +84,7 @@ final class DiagnosticsClientTests: XCTestCase {
             enabled: false,
             sampleRate: 1.0,
             remoteConfigClient: nil,
-            urlSessionConfiguration: Self.testSessionConfiguration
+            httpClient: httpClient
         )
 
         let isRunning = await client.shouldTrack
@@ -108,7 +94,6 @@ final class DiagnosticsClientTests: XCTestCase {
     // MARK: - Tag Tests
 
     func testSetTagsAndFlush() async throws {
-        try skipIfURLProtocolUnsupported()
 
         var capturedRequest: URLRequest?
         let payloadExpectation = XCTestExpectation(description: "Payload captured")
@@ -118,9 +103,9 @@ final class DiagnosticsClientTests: XCTestCase {
         // Wait for initialization to complete to avoid race condition with flushStored()
         await client.initializationTask?.value
 
-        TestDiagnosticsHandler.responseHandler = { request in
+        httpClient.responseHandler = { request in
             // Only capture requests that contain our test tags to avoid capturing initialization flush
-            if let data = self.extractBodyData(from: request),
+            if let data = request.httpBody,
                let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
                let tags = json["tags"] as? [String: String],
                tags["single_tag"] != nil {
@@ -140,7 +125,7 @@ final class DiagnosticsClientTests: XCTestCase {
         await fulfillment(of: [payloadExpectation], timeout: 5.0)
 
         guard let request = capturedRequest,
-              let data = extractBodyData(from: request),
+              let data = request.httpBody,
               let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
               let tags = json["tags"] as? [String: String] else {
             XCTFail("Failed to parse payload")
@@ -159,7 +144,7 @@ final class DiagnosticsClientTests: XCTestCase {
             enabled: false,
             sampleRate: 1.0,
             remoteConfigClient: nil,
-            urlSessionConfiguration: Self.testSessionConfiguration
+            httpClient: httpClient
         )
 
         // Should return immediately without error
@@ -211,7 +196,6 @@ final class DiagnosticsClientTests: XCTestCase {
     // MARK: - Counter Tests
 
     func testIncrementAndFlush() async throws {
-        try skipIfURLProtocolUnsupported()
 
         var capturedRequest: URLRequest?
         let payloadExpectation = XCTestExpectation(description: "Payload captured")
@@ -221,9 +205,9 @@ final class DiagnosticsClientTests: XCTestCase {
         // Wait for initialization to complete to avoid race condition with flushStored()
         await client.initializationTask?.value
 
-        TestDiagnosticsHandler.responseHandler = { request in
+        httpClient.responseHandler = { request in
             // Only capture requests that contain our test counters to avoid capturing initialization flush
-            if let data = self.extractBodyData(from: request),
+            if let data = request.httpBody,
                let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
                let counters = json["counters"] as? [String: Double],
                counters["counter_1"] != nil || counters["counter_2"] != nil {
@@ -241,7 +225,7 @@ final class DiagnosticsClientTests: XCTestCase {
         await fulfillment(of: [payloadExpectation], timeout: 5.0)
 
         guard let request = capturedRequest,
-              let data = extractBodyData(from: request),
+              let data = request.httpBody,
               let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
               let counters = json["counters"] as? [String: Double] else {
             XCTFail("Failed to parse payload")
@@ -253,7 +237,6 @@ final class DiagnosticsClientTests: XCTestCase {
     }
 
     func testIncrementWithDefaultSize() async throws {
-        try skipIfURLProtocolUnsupported()
 
         var capturedRequest: URLRequest?
         let payloadExpectation = XCTestExpectation(description: "Payload captured")
@@ -263,9 +246,9 @@ final class DiagnosticsClientTests: XCTestCase {
         // Wait for initialization to complete to avoid race condition with flushStored()
         await client.initializationTask?.value
 
-        TestDiagnosticsHandler.responseHandler = { request in
+        httpClient.responseHandler = { request in
             // Only capture requests that contain our test counter to avoid capturing initialization flush
-            if let data = self.extractBodyData(from: request),
+            if let data = request.httpBody,
                let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
                let counters = json["counters"] as? [String: Double],
                counters["default_counter"] != nil {
@@ -281,7 +264,7 @@ final class DiagnosticsClientTests: XCTestCase {
         await fulfillment(of: [payloadExpectation], timeout: 5.0)
 
         guard let request = capturedRequest,
-              let data = extractBodyData(from: request),
+              let data = request.httpBody,
               let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
               let counters = json["counters"] as? [String: Double] else {
             XCTFail("Failed to parse payload")
@@ -294,7 +277,6 @@ final class DiagnosticsClientTests: XCTestCase {
     // MARK: - Histogram Tests
 
     func testRecordHistogramAndFlush() async throws {
-        try skipIfURLProtocolUnsupported()
 
         var capturedRequest: URLRequest?
         let payloadExpectation = XCTestExpectation(description: "Payload captured")
@@ -304,9 +286,9 @@ final class DiagnosticsClientTests: XCTestCase {
         // Wait for initialization to complete to avoid race condition with flushStored()
         await client.initializationTask?.value
 
-        TestDiagnosticsHandler.responseHandler = { request in
+        httpClient.responseHandler = { request in
             // Only capture requests that contain our test histogram to avoid capturing initialization flush
-            if let data = self.extractBodyData(from: request),
+            if let data = request.httpBody,
                let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
                let histogram = json["histogram"] as? [String: [String: Any]],
                histogram["latency"] != nil {
@@ -324,7 +306,7 @@ final class DiagnosticsClientTests: XCTestCase {
         await fulfillment(of: [payloadExpectation], timeout: 5.0)
 
         guard let request = capturedRequest,
-              let data = extractBodyData(from: request),
+              let data = request.httpBody,
               let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
               let histogram = json["histogram"] as? [String: [String: Any]],
               let latencyStats = histogram["latency"] else {
@@ -341,7 +323,6 @@ final class DiagnosticsClientTests: XCTestCase {
     // MARK: - Event Tests
 
     func testRecordEventsAndFlush() async throws {
-        try skipIfURLProtocolUnsupported()
 
         var capturedRequest: URLRequest?
         let payloadExpectation = XCTestExpectation(description: "Payload captured")
@@ -351,9 +332,9 @@ final class DiagnosticsClientTests: XCTestCase {
         // Wait for initialization to complete to avoid race condition with flushStored()
         await client.initializationTask?.value
 
-        TestDiagnosticsHandler.responseHandler = { request in
+        httpClient.responseHandler = { request in
             // Only capture requests that contain our test events to avoid capturing initialization flush
-            if let data = self.extractBodyData(from: request),
+            if let data = request.httpBody,
                let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
                let events = json["events"] as? [[String: Any]],
                events.contains(where: { $0["event_name"] as? String == "app_launch" }) {
@@ -371,7 +352,7 @@ final class DiagnosticsClientTests: XCTestCase {
         await fulfillment(of: [payloadExpectation], timeout: 5.0)
 
         guard let request = capturedRequest,
-              let data = extractBodyData(from: request),
+              let data = request.httpBody,
               let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
               let events = json["events"] as? [[String: Any]] else {
             XCTFail("Failed to parse payload")
@@ -389,7 +370,6 @@ final class DiagnosticsClientTests: XCTestCase {
     // MARK: - Flush Tests
 
     func testFlushAllDataTypes() async throws {
-        try skipIfURLProtocolUnsupported()
 
         var capturedRequest: URLRequest?
         let payloadExpectation = XCTestExpectation(description: "Payload captured")
@@ -399,9 +379,9 @@ final class DiagnosticsClientTests: XCTestCase {
         // Wait for initialization to complete to avoid race condition with flushStored()
         await client.initializationTask?.value
 
-        TestDiagnosticsHandler.responseHandler = { request in
+        httpClient.responseHandler = { request in
             // Only capture requests that contain our test data to avoid capturing initialization flush
-            if let data = self.extractBodyData(from: request),
+            if let data = request.httpBody,
                let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
                let counters = json["counters"] as? [String: Double],
                counters["api_calls"] != nil {
@@ -423,7 +403,7 @@ final class DiagnosticsClientTests: XCTestCase {
         await fulfillment(of: [payloadExpectation], timeout: 5.0)
 
         guard let request = capturedRequest,
-              let data = extractBodyData(from: request),
+              let data = request.httpBody,
               let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
             XCTFail("Failed to parse payload")
             return
@@ -453,7 +433,7 @@ final class DiagnosticsClientTests: XCTestCase {
     }
 
     func testFlushWithNetworkError() async throws {
-        TestDiagnosticsHandler.responseHandler = TestDiagnosticsHandler.errorResponseHandler(statusCode: 500)
+        httpClient.responseHandler = TestDiagnosticsHandler.errorResponseHandler(statusCode: 500)
 
         let client = makeDiagnosticsClient()
 
@@ -466,7 +446,6 @@ final class DiagnosticsClientTests: XCTestCase {
     }
 
     func testFlushSendsCorrectHeaders() async throws {
-        try skipIfURLProtocolUnsupported()
 
         var capturedRequest: URLRequest?
         let headerExpectation = XCTestExpectation(description: "Headers captured")
@@ -476,9 +455,9 @@ final class DiagnosticsClientTests: XCTestCase {
         // Wait for initialization to complete to avoid race condition with flushStored()
         await client.initializationTask?.value
 
-        TestDiagnosticsHandler.responseHandler = { request in
+        httpClient.responseHandler = { request in
             // Only capture requests that contain our test tag to avoid capturing initialization flush
-            if let data = self.extractBodyData(from: request),
+            if let data = request.httpBody,
                let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
                let tags = json["tags"] as? [String: String],
                tags["test"] != nil {
@@ -502,7 +481,6 @@ final class DiagnosticsClientTests: XCTestCase {
     // MARK: - Server Zone Tests
 
     func testUSServerZone() async throws {
-        try skipIfURLProtocolUnsupported()
 
         var capturedURL: URL?
         let urlExpectation = XCTestExpectation(description: "URL captured")
@@ -514,15 +492,15 @@ final class DiagnosticsClientTests: XCTestCase {
             enabled: true,
             sampleRate: 1.0,
             remoteConfigClient: nil,
-            urlSessionConfiguration: Self.testSessionConfiguration
+            httpClient: httpClient
         )
 
         // Wait for initialization to complete to avoid race condition with flushStored()
         await client.initializationTask?.value
 
-        TestDiagnosticsHandler.responseHandler = { request in
+        httpClient.responseHandler = { request in
             // Only capture requests that contain our test tag to avoid capturing initialization flush
-            if let data = self.extractBodyData(from: request),
+            if let data = request.httpBody,
                let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
                let tags = json["tags"] as? [String: String],
                tags["test"] != nil {
@@ -541,7 +519,6 @@ final class DiagnosticsClientTests: XCTestCase {
     }
 
     func testEUServerZone() async throws {
-        try skipIfURLProtocolUnsupported()
 
         var capturedURL: URL?
         let urlExpectation = XCTestExpectation(description: "URL captured")
@@ -553,15 +530,15 @@ final class DiagnosticsClientTests: XCTestCase {
             enabled: true,
             sampleRate: 1.0,
             remoteConfigClient: nil,
-            urlSessionConfiguration: Self.testSessionConfiguration
+            httpClient: httpClient
         )
 
         // Wait for initialization to complete to avoid race condition with flushStored()
         await client.initializationTask?.value
 
-        TestDiagnosticsHandler.responseHandler = { request in
+        httpClient.responseHandler = { request in
             // Only capture requests that contain our test tag to avoid capturing initialization flush
-            if let data = self.extractBodyData(from: request),
+            if let data = request.httpBody,
                let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
                let tags = json["tags"] as? [String: String],
                tags["test"] != nil {
@@ -588,7 +565,7 @@ final class DiagnosticsClientTests: XCTestCase {
             enabled: true,
             sampleRate: 1.0,
             remoteConfigClient: nil,
-            urlSessionConfiguration: Self.testSessionConfiguration
+            httpClient: httpClient
         )
 
         let wasRunning = await client.shouldTrack
@@ -601,7 +578,6 @@ final class DiagnosticsClientTests: XCTestCase {
     }
 
     func testEnableStartsOperation() async throws {
-        try skipIfURLProtocolUnsupported()
 
         let client = DiagnosticsClient(
             apiKey: Self.testApiKey,
@@ -609,7 +585,7 @@ final class DiagnosticsClientTests: XCTestCase {
             enabled: false,
             sampleRate: 1.0,
             remoteConfigClient: nil,
-            urlSessionConfiguration: Self.testSessionConfiguration
+            httpClient: httpClient
         )
 
         let wasRunning = await client.shouldTrack
@@ -630,7 +606,7 @@ final class DiagnosticsClientTests: XCTestCase {
             enabled: true,
             sampleRate: 1.0,
             remoteConfigClient: nil,
-            urlSessionConfiguration: Self.testSessionConfiguration
+            httpClient: httpClient
         )
 
         let wasRunning = await client.shouldTrack
@@ -645,7 +621,6 @@ final class DiagnosticsClientTests: XCTestCase {
     }
 
     func testChangeSampleRateToOneStartsOperation() async throws {
-        try skipIfURLProtocolUnsupported()
 
         let client = DiagnosticsClient(
             apiKey: Self.testApiKey,
@@ -653,7 +628,7 @@ final class DiagnosticsClientTests: XCTestCase {
             enabled: true,
             sampleRate: 0.001, // Very low
             remoteConfigClient: nil,
-            urlSessionConfiguration: Self.testSessionConfiguration
+            httpClient: httpClient
         )
 
         // Note: With low sample rate, may or may not be running initially
@@ -674,7 +649,7 @@ final class DiagnosticsClientTests: XCTestCase {
             enabled: true,
             sampleRate: 1.0,
             remoteConfigClient: nil,
-            urlSessionConfiguration: Self.testSessionConfiguration
+            httpClient: httpClient
         )
 
         // Wait for initial setup (initialization task sets basic diagnostics tags)
@@ -698,7 +673,6 @@ final class DiagnosticsClientTests: XCTestCase {
     // MARK: - Concurrent Operations Test
 
     func testConcurrentOperations() async throws {
-        try skipIfURLProtocolUnsupported()
 
         var capturedRequest: URLRequest?
         let payloadExpectation = XCTestExpectation(description: "Payload captured")
@@ -708,9 +682,9 @@ final class DiagnosticsClientTests: XCTestCase {
         // Wait for initialization to complete to avoid race condition with flushStored()
         await client.initializationTask?.value
 
-        TestDiagnosticsHandler.responseHandler = { request in
+        httpClient.responseHandler = { request in
             // Only capture requests that contain our test counters to avoid capturing initialization flush
-            if let data = self.extractBodyData(from: request),
+            if let data = request.httpBody,
                let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
                let counters = json["counters"] as? [String: Double],
                counters["counter_0"] != nil {
@@ -737,7 +711,7 @@ final class DiagnosticsClientTests: XCTestCase {
         await fulfillment(of: [payloadExpectation], timeout: 5.0)
 
         guard let request = capturedRequest,
-              let data = extractBodyData(from: request),
+              let data = request.httpBody,
               let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
               let tags = json["tags"] as? [String: String],
               let counters = json["counters"] as? [String: Double] else {
@@ -760,7 +734,6 @@ final class DiagnosticsClientTests: XCTestCase {
     // MARK: - Historic Data Tests
 
     func testLoadAndUploadPreviousSessionData() async throws {
-        try skipIfURLProtocolUnsupported()
 
         var uploadCount = 0
         var capturedRequests: [URLRequest] = []
@@ -776,7 +749,7 @@ final class DiagnosticsClientTests: XCTestCase {
         }
 
         // Step 2: Create a new session (simulating app restart)
-        TestDiagnosticsHandler.responseHandler = { request in
+        httpClient.responseHandler = { request in
             capturedRequests.append(request)
             uploadCount += 1
             if uploadCount >= 1 {
@@ -792,7 +765,7 @@ final class DiagnosticsClientTests: XCTestCase {
             enabled: true,
             sampleRate: 1.0,
             remoteConfigClient: nil,
-            urlSessionConfiguration: Self.testSessionConfiguration
+            httpClient: httpClient
         )
 
         // The new session should automatically load and upload the old session's data
@@ -800,7 +773,7 @@ final class DiagnosticsClientTests: XCTestCase {
 
         // Step 3: Validate the uploaded data
         guard let historicRequest = capturedRequests.first,
-              let data = extractBodyData(from: historicRequest),
+              let data = historicRequest.httpBody,
               let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
             XCTFail("Failed to parse historic data payload")
             return
@@ -829,7 +802,6 @@ final class DiagnosticsClientTests: XCTestCase {
     }
 
     func testMultiplePreviousSessionsUpload() async throws {
-        try skipIfURLProtocolUnsupported()
 
         // Note: This test simulates app restarts by creating sessions with small delays
         // In practice, each DiagnosticsClient creates its own timestamp internally,
@@ -846,7 +818,7 @@ final class DiagnosticsClientTests: XCTestCase {
         }
 
         // Create new session that should upload previous session
-        TestDiagnosticsHandler.responseHandler = { request in
+        httpClient.responseHandler = { request in
             capturedRequests.append(request)
             uploadCount += 1
             uploadExpectation.fulfill()
@@ -859,7 +831,7 @@ final class DiagnosticsClientTests: XCTestCase {
             enabled: true,
             sampleRate: 1.0,
             remoteConfigClient: nil,
-            urlSessionConfiguration: Self.testSessionConfiguration
+            httpClient: httpClient
         )
 
         await fulfillment(of: [uploadExpectation], timeout: 5.0)
@@ -871,7 +843,6 @@ final class DiagnosticsClientTests: XCTestCase {
     }
 
     func testPreviousSessionDataClearedAfterUpload() async throws {
-        try skipIfURLProtocolUnsupported()
 
         let uploadExpectation = XCTestExpectation(description: "Historic data uploaded")
 
@@ -882,7 +853,7 @@ final class DiagnosticsClientTests: XCTestCase {
         }
 
         // First new session uploads the data
-        TestDiagnosticsHandler.responseHandler = { request in
+        httpClient.responseHandler = { request in
             uploadExpectation.fulfill()
             return TestDiagnosticsHandler.successResponseHandler()(request)
         }
@@ -893,7 +864,7 @@ final class DiagnosticsClientTests: XCTestCase {
             enabled: true,
             sampleRate: 1.0,
             remoteConfigClient: nil,
-            urlSessionConfiguration: Self.testSessionConfiguration
+            httpClient: httpClient
         )
 
         await fulfillment(of: [uploadExpectation], timeout: 5.0)
@@ -901,7 +872,7 @@ final class DiagnosticsClientTests: XCTestCase {
 
         // Second new session should NOT upload the same data again
         var secondSessionUploadCount = 0
-        TestDiagnosticsHandler.responseHandler = { request in
+        httpClient.responseHandler = { request in
             secondSessionUploadCount += 1
             return TestDiagnosticsHandler.successResponseHandler()(request)
         }
@@ -913,7 +884,7 @@ final class DiagnosticsClientTests: XCTestCase {
             enabled: true,
             sampleRate: 1.0,
             remoteConfigClient: nil,
-            urlSessionConfiguration: Self.testSessionConfiguration
+            httpClient: httpClient
         )
 
         // Wait for initialization to complete (which includes flushing previous sessions)
@@ -927,7 +898,6 @@ final class DiagnosticsClientTests: XCTestCase {
     // MARK: - Error Handling Tests
 
     func testHandlesInvalidURL() async throws {
-        try skipIfURLProtocolUnsupported()
 
         // DiagnosticsClient should handle this gracefully
         let client = DiagnosticsClient(
@@ -936,7 +906,7 @@ final class DiagnosticsClientTests: XCTestCase {
             enabled: true,
             sampleRate: 1.0,
             remoteConfigClient: nil,
-            urlSessionConfiguration: Self.testSessionConfiguration
+            httpClient: httpClient
         )
 
         await client.setTag(name: "test", value: "value")
@@ -947,11 +917,10 @@ final class DiagnosticsClientTests: XCTestCase {
     }
 
     func testHandlesNetworkTimeout() async throws {
-        try skipIfURLProtocolUnsupported()
 
         // Note: This test verifies that the client doesn't crash when a request times out
         // We simulate a slow response rather than a true timeout for test speed
-        TestDiagnosticsHandler.responseHandler = { request in
+        httpClient.responseHandler = { request in
             Thread.sleep(forTimeInterval: 1.0) // Simulate slow network
             return TestDiagnosticsHandler.successResponseHandler()(request)
         }
@@ -967,9 +936,8 @@ final class DiagnosticsClientTests: XCTestCase {
     }
 
     func testHandles4xxError() async throws {
-        try skipIfURLProtocolUnsupported()
 
-        TestDiagnosticsHandler.responseHandler = TestDiagnosticsHandler.errorResponseHandler(statusCode: 400)
+        httpClient.responseHandler = TestDiagnosticsHandler.errorResponseHandler(statusCode: 400)
 
         let client = makeDiagnosticsClient()
 
@@ -982,9 +950,8 @@ final class DiagnosticsClientTests: XCTestCase {
     }
 
     func testHandles5xxError() async throws {
-        try skipIfURLProtocolUnsupported()
 
-        TestDiagnosticsHandler.responseHandler = TestDiagnosticsHandler.errorResponseHandler(statusCode: 503)
+        httpClient.responseHandler = TestDiagnosticsHandler.errorResponseHandler(statusCode: 503)
 
         let client = makeDiagnosticsClient()
 
@@ -1149,82 +1116,43 @@ final class DiagnosticsClientTests: XCTestCase {
             enabled: true,
             sampleRate: 1.0,
             remoteConfigClient: nil,
-            urlSessionConfiguration: Self.testSessionConfiguration
+            httpClient: httpClient
         )
     }
 
-    private func extractBodyData(from request: URLRequest) -> Data? {
-        if let body = request.httpBody {
-            return body
-        }
-
-        // Try to read from httpBodyStream
-        guard let bodyStream = request.httpBodyStream else {
-            return nil
-        }
-
-        bodyStream.open()
-        defer { bodyStream.close() }
-
-        var data = Data()
-        let bufferSize = 4096
-        let buffer = UnsafeMutablePointer<UInt8>.allocate(capacity: bufferSize)
-        defer { buffer.deallocate() }
-
-        while bodyStream.hasBytesAvailable {
-            let bytesRead = bodyStream.read(buffer, maxLength: bufferSize)
-            if bytesRead > 0 {
-                data.append(buffer, count: bytesRead)
-            }
-        }
-
-        return data
-    }
 }
 
 // MARK: - TestDiagnosticsHandler
 
-class TestDiagnosticsHandler: URLProtocol {
-
+final class TestDiagnosticsHandler: HttpClient, @unchecked Sendable {
     typealias ResponseHandler = (URLRequest) -> (URLResponse, Data?)
 
-    static var responseHandler: ResponseHandler?
-    static var requestCount = 0
+    private let lock = NSLock()
+    private var handler: ResponseHandler?
+    private var count = 0
 
-    static func reset() {
-        responseHandler = nil
-        requestCount = 0
+    var responseHandler: ResponseHandler? {
+        get { lock.withLock { handler } }
+        set { lock.withLock { handler = newValue } }
     }
 
-    override class func canInit(with request: URLRequest) -> Bool {
-        return true
-    }
+    var requestCount: Int { lock.withLock { count } }
 
-    override class func canonicalRequest(for request: URLRequest) -> URLRequest {
-        return request
-    }
-
-    override func startLoading() {
-        Self.requestCount += 1
-
-        guard let responseHandler = Self.responseHandler else {
-            client?.urlProtocol(self, didFailWithError: NSError(domain: NSURLErrorDomain, code: NSURLErrorUnknown))
-            return
-        }
-
-        DispatchQueue.global().async { [self] in
-            let (response, data) = responseHandler(request)
-
-            client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
-            if let data {
-                client?.urlProtocol(self, didLoad: data)
-            }
-            client?.urlProtocolDidFinishLoading(self)
+    func reset() {
+        lock.withLock {
+            handler = nil
+            count = 0
         }
     }
 
-    override func stopLoading() {
-        // no-op
+    func send(_ request: URLRequest) async throws -> (Data, URLResponse) {
+        let responseHandler = lock.withLock {
+            count += 1
+            return handler
+        }
+        guard let responseHandler else { throw URLError(.unknown) }
+        let (response, data) = responseHandler(request)
+        return (data ?? Data(), response)
     }
 
     static func successResponseHandler() -> ResponseHandler {
