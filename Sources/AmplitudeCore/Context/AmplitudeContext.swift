@@ -36,6 +36,39 @@ public struct AmplitudeContext {
                   httpClient: httpClient)
     }
 
+    // 1.5.x signature, kept for binary compatibility with prebuilt Session Replay and Guides & Surveys binaries.
+    @available(*, deprecated, message: "Use init(apiKey:instanceName:serverZone:logger:httpClient:)")
+    @_disfavoredOverload
+    public init(apiKey: String,
+                instanceName: String = "$default_instance",
+                serverZone: ServerZone = .US,
+                logger: CoreLogger = OSLogger(logLevel: .error)) {
+        self.init(apiKey: apiKey,
+                  instanceName: instanceName,
+                  serverZone: serverZone,
+                  logger: logger,
+                  httpClient: nil)
+    }
+
+    // 1.5.x signature, kept for binary compatibility with prebuilt Session Replay and Guides & Surveys binaries.
+    @_spi(Internal)
+    @available(*, deprecated, message: "Use init(apiKey:instanceName:serverZone:logger:remoteConfigClient:diagnosticsClient:httpClient:)")
+    @_disfavoredOverload
+    public init(apiKey: String,
+                instanceName: String = "$default_instance",
+                serverZone: ServerZone = .US,
+                logger: CoreLogger = OSLogger(logLevel: .error),
+                remoteConfigClient: RemoteConfigClient?,
+                diagnosticsClient: CoreDiagnostics?) {
+        self.init(apiKey: apiKey,
+                  instanceName: instanceName,
+                  serverZone: serverZone,
+                  logger: logger,
+                  remoteConfigClient: remoteConfigClient,
+                  diagnosticsClient: diagnosticsClient,
+                  httpClient: nil)
+    }
+
     @_spi(Internal)
     public init(apiKey: String,
                 instanceName: String = "$default_instance",
