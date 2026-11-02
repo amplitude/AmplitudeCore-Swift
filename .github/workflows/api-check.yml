@@ -1,0 +1,31 @@
+name: API Compatibility Check
+
+# Fails a PR that breaks the ABI or API of the latest AmplitudeCore release. See CONTRIBUTING.md,
+# "Public API and ABI changes".
+on:
+  pull_request:
+    paths:
+      - "Sources/**"
+      - "Package.swift"
+      - "Package@*.swift"
+      - "scripts/api/**"
+      - "api/**"
+      - ".github/workflows/api-check.yml"
+
+jobs:
+  api-check:
+    name: API / ABI check
+    runs-on: macos-15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      # The runner's default Xcode is used: results don't depend on the compiler version, but it must not be
+      # older than the Xcode in release.yml (an older digester can't load a newer compiler's interface).
+      - name: Install iOS platform
+        run: |
+          xcrun simctl list > /dev/null
+          sudo xcodebuild -downloadPlatform iOS
+
+      - name: API / ABI check vs latest release
+        run: scripts/api/check.sh
