@@ -107,6 +107,20 @@ public actor RemoteConfigClient: NSObject {
                   httpClient: httpClient ?? URLSessionHttpClient())
     }
 
+    // 1.5.x signature, kept for binary compatibility with prebuilt Session Replay and Guides & Surveys binaries.
+    @available(*, deprecated, message: "Use init(apiKey:serverZone:instanceName:logger:httpClient:)")
+    @_disfavoredOverload
+    public init(apiKey: String,
+                serverZone: ServerZone,
+                instanceName: String? = nil,
+                logger: CoreLogger) {
+        self.init(apiKey: apiKey,
+                  serverZone: serverZone,
+                  instanceName: instanceName,
+                  logger: logger,
+                  httpClient: nil)
+    }
+
     init(apiKey: String,
          serverUrl: String,
          logger: CoreLogger = OSLogger(),
