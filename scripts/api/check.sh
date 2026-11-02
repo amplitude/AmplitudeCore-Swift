@@ -21,7 +21,7 @@ fail() { echo "FAIL: $*" >&2; exit 1; }
 ver=$(sed -nE 's#.*releases/download/v([0-9][^/]*)/AmplitudeCore\.zip.*#\1#p' Package.swift | head -1)
 sum=$(awk '/\/AmplitudeCore\.zip"/ {f=1; next} f && /checksum:/ {gsub(/.*checksum: *"|".*/, ""); print; exit}' Package.swift)
 [ -n "$ver" ] && [ -n "$sum" ] || fail "could not read the AmplitudeCore.zip binaryTarget from Package.swift"
-echo "baseline v$ver, $(xcodebuild -version | head -1)"
+echo "baseline v$ver, $(xcodebuild -version | sed -n 1p)"  # sed reads all input; head would close the pipe early
 
 # 1. Baseline: the released ios-arm64 slice (cached per version).
 base="$work/baseline-v$ver"
@@ -70,13 +70,17 @@ diagnose() { xcrun swift-api-digester -diagnose-sdk -input-paths "$work/base.$1.
   -breakage-allowlist-path "$work/allowlist.txt" -compiler-style-diags "${@:2}"; }
 abi_rc=0; api_rc=0
 diagnose abi -abi -error-on-abi-breakage 2> "$work/abi.txt" || abi_rc=$?
-diagnose api -o "$work/api.txt" 2> /dev/null || api_rc=$?
+diagnose api -o "$work/api.txt" 2> "$work/api.stderr" || api_rc=$?
 
 # The ABI checker also warns "is a new API without '@available'" for every addition; only errors count.
 sed -E 's/^<unknown>:0: //; s/ \[#api-digester-breaking-change\]$//' "$work/abi.txt" | grep '^error:' > "$work/abi.errors" || true
-grep '^API breakage:' "$work/api.txt" > "$work/api.errors" 2> /dev/null || true
+# With -compiler-style-diags, Swift 6.1 (Xcode 16.x) prints API breakages to stderr; Swift 6.3+ writes them to
+# the -o file. Read both.
+cat "$work/api.txt" "$work/api.stderr" 2> /dev/null \
+  | sed -E 's/^<unknown>:0: (warning|error): //; s/ \[#api-digester-breaking-change\]$//' \
+  | grep '^API breakage:' | sort -u > "$work/api.errors" || true
 n_abi=$(wc -l < "$work/abi.errors" | tr -d ' '); n_api=$(wc -l < "$work/api.errors" | tr -d ' ')
-if { [ "$abi_rc" -ne 0 ] && [ "$n_abi" -eq 0 ]; } || [ "$api_rc" -ne 0 ] || [ ! -f "$work/api.txt" ]; then
+if { [ "$abi_rc" -ne 0 ] && [ "$n_abi" -eq 0 ]; } || { [ "$api_rc" -ne 0 ] && [ "$n_api" -eq 0 ]; } || [ ! -f "$work/api.txt" ]; then
   tail -5 "$work/abi.txt" >&2
   fail "swift-api-digester failed (ABI exit $abi_rc, API exit $api_rc) without reporting a breakage"
 fi
