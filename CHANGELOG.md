@@ -1,3 +1,10 @@
+## [1.6.1](https://github.com/amplitude/AmplitudeCore-Swift/compare/v1.6.0...v1.6.1) (2026-10-31)
+
+
+### Bug Fixes
+
+* restore initializers removed in 1.6.0 for binary compatibility ([#120](https://github.com/amplitude/AmplitudeCore-Swift/issues/120)) ([b259fb5](https://github.com/amplitude/AmplitudeCore-Swift/commit/b259fb5da3fc4c9de1a85b94ca9fe768fe441a36))
+
 # [1.6.0](https://github.com/amplitude/AmplitudeCore-Swift/compare/v1.5.4...v1.6.0) (2026-10-30)
 
 
