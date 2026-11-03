@@ -7,6 +7,10 @@ on:
         description: "Do a dry run to preview instead of a real release"
         required: true
         default: "true"
+      skipCocoaPods:
+        description: "Skip publishing to CocoaPods"
+        type: boolean
+        default: false
 
 jobs:
   authorize:
@@ -28,6 +32,8 @@ jobs:
   release:
     name: Release
     needs: [authorize, run-tests]
+    env:
+      SKIP_COCOAPODS: ${{ inputs.skipCocoaPods }}
     runs-on: macos-15
     steps:
       - name: Checkout
