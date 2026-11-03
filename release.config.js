@@ -94,8 +94,8 @@ module.exports = {
         "assets": ["AmplitudeCore.podspec", "CHANGELOG.md", "Package.swift", "Package@swift-5.9.swift", "Package@swift-6.2.swift", "Package@swift-6.4.swift", "docs/Carthage/AmplitudeCore.json", "Sources/AmplitudeCore/Constants.swift"],
         "message": "chore(release): ${nextRelease.version} [skip ci]\n\n${nextRelease.notes}"
       }],
-       ["@semantic-release/exec", {
+       ...(process.env.SKIP_COCOAPODS === "true" ? [] : [["@semantic-release/exec", {
          "publishCmd": "pod trunk push AmplitudeCore.podspec --allow-warnings",
-       }],
+       }]]),
     ],
   }
