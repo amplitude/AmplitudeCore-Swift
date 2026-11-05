@@ -10,35 +10,73 @@ on:
 jobs:
   unit-test:
     name: Unit ${{ matrix.platform }} - Xcode ${{ matrix.xcode }} - OS ${{ matrix.test-destination-os }}
-    runs-on: macos-15
+    runs-on: ${{ matrix.runner }}
 
     strategy:
       fail-fast: false
       matrix:
+        # Keep the compiler at the release baseline while testing two OS generations.
+        # macos-15 retains the older runtimes; macos-26 also covers the newer host OS.
+        # Pin simulator versions: OS=latest can fail to resolve a destination.
         include:
           - platform: iOS
+            runner: macos-15
             xcode: "26.0"
+            test-destination-os: "18.5"
             device: "iPhone 16"
-            test-destination-os: latest
+
+          - platform: iOS
+            runner: macos-26
+            xcode: "26.0"
+            test-destination-os: "26.0.1"
+            device: "iPhone 17"
 
           - platform: macOS
+            runner: macos-15
             xcode: "26.0"
-            test-destination-os: latest
+            test-destination-os: "15"
+
+          - platform: macOS
+            runner: macos-26
+            xcode: "26.0"
+            test-destination-os: "26"
 
           - platform: tvOS
+            runner: macos-15
             xcode: "26.0"
-            test-destination-os: latest
+            test-destination-os: "18.5"
+            device: "Apple TV"
+
+          - platform: tvOS
+            runner: macos-26
+            xcode: "26.0"
+            test-destination-os: "26.0"
             device: "Apple TV"
 
           - platform: watchOS
+            runner: macos-15
             xcode: "26.0"
-            test-destination-os: latest
+            test-destination-os: "11.5"
             device: "Apple Watch Series 10 (42mm)"
 
-          - platform: visionOS
+          - platform: watchOS
+            runner: macos-26
             xcode: "26.0"
-            test-destination-os: latest
+            test-destination-os: "26.0"
+            device: "Apple Watch Series 11 (42mm)"
+
+          - platform: visionOS
+            runner: macos-15
+            xcode: "26.0"
+            test-destination-os: "2.5"
             device: "Apple Vision Pro"
+
+          - platform: visionOS
+            runner: macos-26
+            xcode: "26.0"
+            test-destination-os: "26.0"
+            device: "Apple Vision Pro"
+
     steps:
       - name: Checkout
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
