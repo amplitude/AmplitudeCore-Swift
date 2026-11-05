@@ -561,8 +561,7 @@ actor DiagnosticsStorage {
             try? await Task.sleep(nanoseconds: interval)
             guard !Task.isCancelled else { return }
 
-            await self?.markPersistenceTimerFinished()
-            await self?.persistIfNeeded()
+            await self?.persistFromTimer()
         }
     }
 
@@ -571,10 +570,18 @@ actor DiagnosticsStorage {
         persistenceTask = nil
     }
 
-    private func markPersistenceTimerFinished() {
+    private func persistFromTimer() {
+        // Cancellation may happen while this call is queued on the actor. A stopped timer
+        // must not persist or clear the handle of a replacement timer.
+        guard !Task.isCancelled else { return }
+
+        // Keep persistence and clearing the handle in one actor turn. A waiter must not
+        // observe a nil handle before the timer has finished writing.
+        persistIfNeeded()
         persistenceTask = nil
     }
 
+    // Waits for pending writes, not for the task to release its reference to this storage.
     func waitForPendingPersistenceTask() async throws {
         await persistenceTask?.value
     }
