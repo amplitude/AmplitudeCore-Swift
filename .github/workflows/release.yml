@@ -43,17 +43,14 @@ jobs:
         # See https://github.com/swiftlang/swift-package-manager/issues/4651
         # NOTE: if downgrading, you may have to manually delete the actions cache via the github interface
       - name: Set Xcode Version
-        run: sudo xcode-select -switch /Applications/Xcode_16.3.app
+        run: sudo xcode-select -switch /Applications/Xcode_26.0.app
 
-      - name: Install Apple platform SDKs
+      - name: Install required platforms
         run: |
-          # Warm up CoreSimulator to avoid "Unable to connect to simulator":
-          # https://github.com/actions/runner-images/issues/12862#issuecomment-3239326872
           xcrun simctl list > /dev/null
-          sudo xcodebuild -downloadPlatform iOS
-          sudo xcodebuild -downloadPlatform tvOS
-          sudo xcodebuild -downloadPlatform watchOS
-          sudo xcodebuild -downloadPlatform visionOS
+          for platform in tvOS watchOS visionOS; do
+            sudo xcodebuild -downloadPlatform "$platform"
+          done
 
       - name: Checkout swift-create-xcframework
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
@@ -143,16 +140,12 @@ jobs:
         run: |
           CHECKSUM=$(xcrun swift package compute-checksum AmplitudeCore.zip) && \
           sed -i '' -E "/AmplitudeCore\.zip/,/checksum:/ s/(checksum: \")[^\"]*(\")/\1$CHECKSUM\2/" Package.swift && \
-          sed -i '' -E "/AmplitudeCore\.zip/,/checksum:/ s/(checksum: \")[^\"]*(\")/\1$CHECKSUM\2/" Package@swift-5.9.swift && \
-          sed -i '' -E "/AmplitudeCore\.zip/,/checksum:/ s/(checksum: \")[^\"]*(\")/\1$CHECKSUM\2/" Package@swift-6.2.swift && \
           sed -i '' -E "/AmplitudeCore\.zip/,/checksum:/ s/(checksum: \")[^\"]*(\")/\1$CHECKSUM\2/" Package@swift-6.4.swift
 
       - name: Update Checksum for No UIKit
         run: |
           CHECKSUM=$(xcrun swift package compute-checksum AmplitudeCoreNoUIKit.zip) && \
           sed -i '' -E "/AmplitudeCoreNoUIKit\.zip/,/checksum:/ s/(checksum: \")[^\"]*(\")/\1$CHECKSUM\2/" Package.swift && \
-          sed -i '' -E "/AmplitudeCoreNoUIKit\.zip/,/checksum:/ s/(checksum: \")[^\"]*(\")/\1$CHECKSUM\2/" Package@swift-5.9.swift && \
-          sed -i '' -E "/AmplitudeCoreNoUIKit\.zip/,/checksum:/ s/(checksum: \")[^\"]*(\")/\1$CHECKSUM\2/" Package@swift-6.2.swift && \
           sed -i '' -E "/AmplitudeCoreNoUIKit\.zip/,/checksum:/ s/(checksum: \")[^\"]*(\")/\1$CHECKSUM\2/" Package@swift-6.4.swift
 
       - name: Semantic Release --dry-run

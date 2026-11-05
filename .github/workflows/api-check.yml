@@ -20,12 +20,9 @@ jobs:
       - name: Checkout
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
 
-      # The runner's default Xcode is used: results don't depend on the compiler version, but it must not be
-      # older than the Xcode in release.yml (an older digester can't load a newer compiler's interface).
-      - name: Install iOS platform
-        run: |
-          xcrun simctl list > /dev/null
-          sudo xcodebuild -downloadPlatform iOS
+      # Use the release toolchain to build and compare both interfaces.
+      - name: Set Xcode 26.0
+        run: sudo xcode-select -switch /Applications/Xcode_26.0.app
 
       - name: API / ABI check vs latest release
         run: scripts/api/check.sh
