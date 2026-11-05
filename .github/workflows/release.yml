@@ -45,6 +45,12 @@ jobs:
       - name: Set Xcode Version
         run: sudo xcode-select -switch /Applications/Xcode_26.0.app
 
+      - name: Install required platforms
+        run: |
+          for platform in tvOS watchOS visionOS; do
+            sudo xcodebuild -downloadPlatform "$platform"
+          done
+
       - name: Checkout swift-create-xcframework
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:

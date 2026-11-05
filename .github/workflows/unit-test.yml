@@ -83,6 +83,11 @@ jobs:
       - name: Set Xcode ${{ matrix.xcode }}
         run: |
           sudo xcode-select -switch /Applications/Xcode_${{ matrix.xcode }}.app
+      # Xcode 26.0 requires its matching platform runtime even when testing another OS.
+      # macos-15 already includes iOS 26.0; macOS needs no additional platform.
+      - name: Install required platform
+        if: matrix.platform != 'macOS' && (matrix.runner == 'macos-26' || matrix.platform != 'iOS')
+        run: sudo xcodebuild -downloadPlatform '${{ matrix.platform }}'
       - name: ${{ matrix.platform }} Tests
         run: |
           case "${{ matrix.platform }}" in
