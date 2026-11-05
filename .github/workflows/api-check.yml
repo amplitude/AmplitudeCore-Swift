@@ -24,10 +24,5 @@ jobs:
       - name: Set Xcode 26.0
         run: sudo xcode-select -switch /Applications/Xcode_26.0.app
 
-      - name: Install iOS platform
-        run: |
-          xcrun simctl list > /dev/null
-          sudo xcodebuild -downloadPlatform iOS
-
       - name: API / ABI check vs latest release
         run: scripts/api/check.sh

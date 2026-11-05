@@ -45,16 +45,6 @@ jobs:
       - name: Set Xcode Version
         run: sudo xcode-select -switch /Applications/Xcode_26.0.app
 
-      - name: Install Apple platform SDKs
-        run: |
-          # Warm up CoreSimulator to avoid "Unable to connect to simulator":
-          # https://github.com/actions/runner-images/issues/12862#issuecomment-3239326872
-          xcrun simctl list > /dev/null
-          sudo xcodebuild -downloadPlatform iOS
-          sudo xcodebuild -downloadPlatform tvOS
-          sudo xcodebuild -downloadPlatform watchOS
-          sudo xcodebuild -downloadPlatform visionOS
-
       - name: Checkout swift-create-xcframework
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
