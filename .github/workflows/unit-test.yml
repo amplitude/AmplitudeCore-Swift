@@ -83,6 +83,7 @@ jobs:
       - name: Set Xcode ${{ matrix.xcode }}
         run: |
           sudo xcode-select -switch /Applications/Xcode_${{ matrix.xcode }}.app
+          xcrun simctl list > /dev/null
       # Xcode 26.0 requires its matching platform runtime even when testing another OS.
       # macos-15 already includes iOS 26.0; macOS needs no additional platform.
       - name: Install required platform
