@@ -39,38 +39,6 @@ module.exports = {
               "countMatches": true
             },
             {
-              "files": ["Package.swift", "Package@swift-5.9.swift", "Package@swift-6.2.swift", "Package@swift-6.4.swift"],
-              "from": "https://github.com/amplitude/AmplitudeCore-Swift/releases/download/v.*/AmplitudeCore",
-              "to": "https://github.com/amplitude/AmplitudeCore-Swift/releases/download/v${nextRelease.version}/AmplitudeCore",
-              "results": [
-                {
-                  "file": "Package.swift",
-                  "hasChanged": true,
-                  "numMatches": 2,
-                  "numReplacements": 2
-                },
-                {
-                  "file": "Package@swift-5.9.swift",
-                  "hasChanged": true,
-                  "numMatches": 2,
-                  "numReplacements": 2
-                },
-                {
-                  "file": "Package@swift-6.2.swift",
-                  "hasChanged": true,
-                  "numMatches": 2,
-                  "numReplacements": 2
-                },
-                {
-                  "file": "Package@swift-6.4.swift",
-                  "hasChanged": true,
-                  "numMatches": 2,
-                  "numReplacements": 2
-                }
-              ],
-              "countMatches": true
-            },
-            {
               "files": ["Sources/AmplitudeCore/Constants.swift"],
               "from": "SDK_VERSION = \".*\"",
               "to": "SDK_VERSION = \"${nextRelease.version}\"",
@@ -88,7 +56,44 @@ module.exports = {
         }
       ],
       ["@semantic-release/exec", {
-        "prepareCmd": "cat docs/Carthage/AmplitudeCore.json | jq --arg RELEASE '${nextRelease.version}' '. + {$RELEASE: \"https://github.com/amplitude/AmplitudeCore-Swift/releases/download/v\\($RELEASE)/AmplitudeCore.zip\"}' > docs/Carthage/AmplitudeCore.json.tmp && mv docs/Carthage/AmplitudeCore.json.tmp docs/Carthage/AmplitudeCore.json"
+        "prepareCmd": "bash scripts/build-frameworks.sh ${nextRelease.version} && cat docs/Carthage/AmplitudeCore.json | jq --arg RELEASE '${nextRelease.version}' '. + {$RELEASE: \"https://github.com/amplitude/AmplitudeCore-Swift/releases/download/v\\($RELEASE)/AmplitudeCore.zip\"}' > docs/Carthage/AmplitudeCore.json.tmp && mv docs/Carthage/AmplitudeCore.json.tmp docs/Carthage/AmplitudeCore.json"
+      }],
+      // Keep existing binary URLs available while the generator resolves the package.
+      ["semantic-release-replace-plugin", {
+        "replacements": [
+          {
+            "files": ["Package.swift", "Package@swift-5.9.swift", "Package@swift-6.2.swift", "Package@swift-6.4.swift"],
+            "from": "https://github.com/amplitude/AmplitudeCore-Swift/releases/download/v.*/AmplitudeCore",
+            "to": "https://github.com/amplitude/AmplitudeCore-Swift/releases/download/v${nextRelease.version}/AmplitudeCore",
+            "results": [
+              {
+                "file": "Package.swift",
+                "hasChanged": true,
+                "numMatches": 2,
+                "numReplacements": 2
+              },
+              {
+                "file": "Package@swift-5.9.swift",
+                "hasChanged": true,
+                "numMatches": 2,
+                "numReplacements": 2
+              },
+              {
+                "file": "Package@swift-6.2.swift",
+                "hasChanged": true,
+                "numMatches": 2,
+                "numReplacements": 2
+              },
+              {
+                "file": "Package@swift-6.4.swift",
+                "hasChanged": true,
+                "numMatches": 2,
+                "numReplacements": 2
+              }
+            ],
+            "countMatches": true
+          }
+        ]
       }],
       ["@semantic-release/git", {
         "assets": ["AmplitudeCore.podspec", "CHANGELOG.md", "Package.swift", "Package@swift-5.9.swift", "Package@swift-6.2.swift", "Package@swift-6.4.swift", "docs/Carthage/AmplitudeCore.json", "Sources/AmplitudeCore/Constants.swift"],
