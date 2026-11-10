@@ -239,6 +239,127 @@ final class SanitizedErrorTests: XCTestCase {
         Array(repeating: UnreadableCodingKey(), count: depth)
     }
 
+    func testSchemaPreservesNestedModelFields() {
+        assertPath([PathKey("request"), PathKey("size")],
+                   schema: .object(["request": .object(["size": .value])]), expected: "request.size")
+    }
+
+    func testSchemaMasksDictionaryKeysEvenWhenTheyMatchKnownFields() {
+        for key in [secret, "max", "histogram", "123"] {
+            assertPath([PathKey("histogram"), PathKey(key, index: 123), PathKey("max")],
+                       schema: .object(["histogram": .dictionary(.object(["max": .value]))]),
+                       expected: "histogram.<key>.max")
+        }
+    }
+
+    func testSchemaDoesNotReadDictionaryKeyNamesOrNumericValues() {
+        assertPath([UnreadableCodingKey(), UnreadableCodingKey()],
+                   schema: .dictionary(.dictionary(.value)), expected: "<key>.<key>")
+    }
+
+    func testSchemaPreservesArrayIndicesWithoutReadingTheirStringValues() {
+        assertPath([PathKey("events"), IndexOnlyKey(index: 2), PathKey("time")],
+                   schema: .object(["events": .array(.object(["time": .value]))]), expected: "events[2].time")
+        assertPath([IndexOnlyKey(index: 0), IndexOnlyKey(index: 123)],
+                   schema: .array(.array(.value)), expected: "[0][123]")
+    }
+
+    func testSchemaMasksInvalidArrayIndices() {
+        for index: Int? in [nil, -1] {
+            assertPath([IndexOnlyKey(index: index)], schema: .array(.value), expected: "[?]")
+        }
+    }
+
+    func testUnknownSchemaFieldStopsInterpretingSubsequentKeys() {
+        assertPath([PathKey(secret), UnreadableCodingKey(), UnreadableCodingKey()],
+                   schema: .object(["known": .array(.object(["time": .value]))]),
+                   expected: "<key>.<key>.<key>")
+    }
+
+    func testSchemaValueDoesNotInspectUnexpectedDescendants() {
+        assertPath([UnreadableCodingKey(), UnreadableCodingKey()], schema: .value, expected: "<key>.<key>")
+    }
+
+    func testSchemaFormatsRootFailure() {
+        assertPath([], schema: .object(["count": .value]), expected: "$")
+    }
+
+    func testSchemaIncludesMissingModelFieldRatherThanOnlyItsParent() {
+        let error = DecodingError.keyNotFound(PathKey("count"),
+            .init(codingPath: [PathKey("stats")], debugDescription: secret))
+        let result = SanitizedError(sanitizing: error, options: .init(
+            codingPathSchema: .object(["stats": .object(["count": .value])])))
+        XCTAssertEqual(result.description, "DecodingError.keyNotFound: codingPath=stats.count")
+    }
+
+    func testSchemaMasksMissingDictionaryKeyWithoutInspectingIt() {
+        let error = DecodingError.keyNotFound(UnreadableCodingKey(),
+            .init(codingPath: [], debugDescription: secret))
+        let result = SanitizedError(sanitizing: error, options: .init(codingPathSchema: .dictionary(.value)))
+        XCTAssertEqual(result.description, "DecodingError.keyNotFound: codingPath=<key>")
+    }
+
+    func testSchemaFormatsEveryDecodingCategoryWithoutContextContent() {
+        let context = DecodingError.Context(codingPath: [PathKey("count")], debugDescription: secret,
+                                            underlyingError: UnreadableSwiftError())
+        let errors: [DecodingError] = [.typeMismatch(Int.self, context), .valueNotFound(Int.self, context),
+                                       .dataCorrupted(context)]
+        for error in errors {
+            let result = SanitizedError(sanitizing: error, options: .init(codingPathSchema: .object(["count": .value])))
+            XCTAssertEqual(result.message, "codingPath=count")
+            XCTAssertFalse(result.description.contains(secret))
+        }
+    }
+
+    func testSchemaDoesNotChangeNSErrorOrAuditedErrorHandling() {
+        let options = SanitizedError.Options(codingPathSchema: .object(["count": .value]))
+        let error = UnreadableNSError(domain: "test.domain", code: 17)
+        XCTAssertEqual(SanitizedError(sanitizing: error, options: options).description,
+                       "UnreadableNSError: domain=test.domain, code=17")
+        XCTAssertEqual(SanitizedError(sanitizing: AuditedError.rejected(status: 429, body: secret), options: options).description,
+                       "AuditedError.rejected: status=429")
+        XCTAssertEqual(SanitizedError(sanitizing: UnreadableSwiftError(), options: options).description, "UnreadableSwiftError")
+    }
+
+    func testSchemaFormatsActualJSONEncoderArrayPath() throws {
+        do {
+            _ = try JSONEncoder().encode([[Double.infinity]])
+            XCTFail("Expected encoding failure")
+        } catch {
+            let result = SanitizedError(sanitizing: error, options: .init(codingPathSchema: .array(.array(.value))))
+            XCTAssertEqual(result.description, "EncodingError.invalidValue: codingPath=[0][0]")
+        }
+    }
+
+    func testSchemaFormatsActualJSONEncoderDictionaryPathWithoutNumericKey() throws {
+        do {
+            _ = try JSONEncoder().encode(["123456789": Double.infinity])
+            XCTFail("Expected encoding failure")
+        } catch {
+            let result = SanitizedError(sanitizing: error, options: .init(codingPathSchema: .dictionary(.value)))
+            XCTAssertEqual(result.description, "EncodingError.invalidValue: codingPath=<key>")
+        }
+    }
+
+    func testSchemaFormatsActualJSONDecoderMissingField() throws {
+        struct Model: Decodable { let count: Int }
+        do {
+            _ = try JSONDecoder().decode(Model.self, from: Data("{}".utf8))
+            XCTFail("Expected missing field")
+        } catch {
+            let result = SanitizedError(sanitizing: error, options: .init(codingPathSchema: .object(["count": .value])))
+            XCTAssertEqual(result.description, "DecodingError.keyNotFound: codingPath=count")
+        }
+    }
+
+    private func assertPath(_ path: [CodingKey], schema: SanitizedError.CodingPathSchema, expected: String,
+                            file: StaticString = #filePath, line: UInt = #line) {
+        let error = EncodingError.invalidValue(UnreadableValue(), .init(codingPath: path, debugDescription: secret))
+        let result = SanitizedError(sanitizing: error, options: .init(codingPathSchema: schema))
+        XCTAssertEqual(result.description, "EncodingError.invalidValue: codingPath=\(expected)", file: file, line: line)
+        XCTAssertFalse(result.description.contains(secret), file: file, line: line)
+    }
+
     private func assertDecodingError(kind: String, file: StaticString = #filePath, line: UInt = #line,
                                      makeError: (DecodingError.Context) -> DecodingError) {
         for depth in [0, 1, 4, 100] {
@@ -264,6 +385,22 @@ private struct UnreadableCodingKey: CodingKey {
     init?(intValue: Int) { self.init() }
     var stringValue: String { XCTFail("Read coding key name"); return "private-key" }
     var intValue: Int? { XCTFail("Read coding key index"); return 42 }
+}
+
+private struct PathKey: CodingKey {
+    let stringValue: String
+    let intValue: Int?
+    init(_ name: String, index: Int? = nil) { stringValue = name; intValue = index }
+    init?(stringValue: String) { self.init(stringValue) }
+    init?(intValue: Int) { self.init("Index \(intValue)", index: intValue) }
+}
+
+private struct IndexOnlyKey: CodingKey {
+    let intValue: Int?
+    init(index: Int?) { intValue = index }
+    init?(stringValue: String) { self.init(index: nil) }
+    init?(intValue: Int) { self.init(index: intValue) }
+    var stringValue: String { XCTFail("Read array key string"); return "private-key" }
 }
 
 private struct UnreadableSwiftError: Error, LocalizedError, CustomStringConvertible,

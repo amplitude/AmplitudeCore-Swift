@@ -333,7 +333,8 @@ actor DiagnosticsStorage {
                 try persist(tags: tags, in: directory)
                 hasUnsavedTags = false
             } catch {
-                logger.error(message: "DiagnosticsStorage: Failed to write tags: \(SanitizedError(sanitizing: error))")
+                let summary = SanitizedError(sanitizing: error, options: .init(codingPathSchema: .dictionary(.value)))
+                logger.error(message: "DiagnosticsStorage: Failed to write tags: \(summary)")
             }
         }
 
@@ -342,7 +343,8 @@ actor DiagnosticsStorage {
                 try persist(counters: counters, in: directory)
                 hasUnsavedCounters = false
             } catch {
-                logger.error(message: "DiagnosticsStorage: Failed to write counters: \(SanitizedError(sanitizing: error))")
+                let summary = SanitizedError(sanitizing: error, options: .init(codingPathSchema: .dictionary(.value)))
+                logger.error(message: "DiagnosticsStorage: Failed to write counters: \(summary)")
             }
         }
 
@@ -351,7 +353,8 @@ actor DiagnosticsStorage {
                 try persist(histograms: histograms, in: directory)
                 hasUnsavedHistograms = false
             } catch {
-                logger.error(message: "DiagnosticsStorage: Failed to write histograms: \(SanitizedError(sanitizing: error))")
+                let summary = SanitizedError(sanitizing: error, options: .init(codingPathSchema: .dictionary(HistogramStats.codingPathSchema)))
+                logger.error(message: "DiagnosticsStorage: Failed to write histograms: \(summary)")
             }
         }
 
@@ -362,7 +365,8 @@ actor DiagnosticsStorage {
                 try append(events: unsavedEvents, to: logUrl)
                 unsavedEvents.removeAll()
             } catch {
-                logger.error(message: "DiagnosticsStorage: Failed to add events: \(SanitizedError(sanitizing: error))")
+                let summary = SanitizedError(sanitizing: error, options: .init(codingPathSchema: DiagnosticsEvent.codingPathSchema))
+                logger.error(message: "DiagnosticsStorage: Failed to add events: \(summary)")
             }
         }
     }

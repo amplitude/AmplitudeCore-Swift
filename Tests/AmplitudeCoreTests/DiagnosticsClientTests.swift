@@ -90,13 +90,39 @@ final class DiagnosticsClientTests: XCTestCase {
             return TestDiagnosticsHandler.successResponseHandler()(request)
         }
         let snapshot = DiagnosticsSnapshot(tags: ["private-tag": "private-value"], counters: [:],
-            histograms: [marker: HistogramStats(count: 1, min: .nan, max: .nan, sum: .nan)], events: [])
+            histograms: [marker: HistogramStats(count: 1, min: 0, max: .nan, sum: 0)], events: [])
         await client.uploadSnapshot(snapshot)
         let messages = logger.messages.joined()
-        XCTAssertTrue(messages.contains("Failed to encode payload: EncodingError.invalidValue: codingPathDepth=3"))
+        XCTAssertTrue(messages.contains("Failed to encode payload: EncodingError.invalidValue: codingPath=histogram.<key>.max"))
         XCTAssertFalse(messages.contains(marker))
         XCTAssertFalse(messages.contains("private-value"))
         XCTAssertFalse(messages.contains(Self.testApiKey))
+    }
+
+    func testDiagnosticPayloadSchemaMatchesActualDecodingPaths() throws {
+        let event: [String: Any] = ["event_name": "test", "time": 1]
+        let cases: [(String, Any, String)] = [
+            ("tags", ["private-tag": 123], "tags.<key>"),
+            ("counters", ["123456789": "private-value"], "counters.<key>"),
+            ("histogram", ["private-name": ["count": 1, "min": 0, "max": "private-value", "avg": 0]],
+             "histogram.<key>.max"),
+            ("events", [event, event, ["event_name": "test", "time": "private-value"]], "events[2].time"),
+            ("events", [["time": 1]], "events[0].event_name")
+        ]
+        for (field, value, expectedPath) in cases {
+            var payload: [String: Any] = ["tags": [:], "counters": [:], "histogram": [:], "events": []]
+            payload[field] = value
+            let data = try JSONSerialization.data(withJSONObject: payload)
+            do {
+                _ = try JSONDecoder().decode(DiagnosticsPayload.self, from: data)
+                XCTFail("Expected invalid \(field)")
+            } catch {
+                let summary = SanitizedError(sanitizing: error, options: .init(codingPathSchema: DiagnosticsPayload.codingPathSchema))
+                XCTAssertEqual(summary.message, "codingPath=\(expectedPath)")
+                XCTAssertFalse(summary.description.contains("private-"))
+                XCTAssertFalse(summary.description.contains("123456789"))
+            }
+        }
     }
 
     // MARK: - Initialization Tests

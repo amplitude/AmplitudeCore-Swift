@@ -72,6 +72,21 @@ final class DiagnosticsStorageTests: XCTestCase {
         XCTAssertEqual(tags.count, 1)
     }
 
+    func testHistogramEncodingFailureLogsFieldWithoutMetricName() async throws {
+        let logger = CapturingLogger()
+        let storage = DiagnosticsStorage(instanceName: testInstanceName, sessionStartAt: testTimestamp,
+                                         logger: logger, shouldStore: true)
+        // All persisted stats except sum remain finite after adding NaN to an existing histogram.
+        await storage.recordHistogram(name: "private-metric", value: 1)
+        await storage.recordHistogram(name: "private-metric", value: .nan)
+        await storage.stopPersistenceTimer()
+        await storage.persistIfNeeded()
+        let messages = logger.messages.joined()
+        XCTAssertTrue(messages.contains("Failed to write histograms: EncodingError.invalidValue: codingPath=<key>.sum"))
+        XCTAssertFalse(messages.contains("private-metric"))
+        try await storage.removeAllStoredFiles()
+    }
+
     func testSetTags() async throws {
         let newTags = [
             "tag1": "value1",

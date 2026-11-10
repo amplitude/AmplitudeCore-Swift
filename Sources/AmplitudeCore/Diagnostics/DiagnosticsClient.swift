@@ -205,7 +205,8 @@ public actor DiagnosticsClient: CoreDiagnostics {
             request.httpBody = bodyData
             self.logger.debug(message: "DiagnosticsClient: Encoded payload (\(bodyData.count) bytes)")
         } catch {
-            self.logger.error(message: "DiagnosticsClient: Failed to encode payload: \(SanitizedError(sanitizing: error))")
+            let summary = SanitizedError(sanitizing: error, options: .init(codingPathSchema: DiagnosticsPayload.codingPathSchema))
+            self.logger.error(message: "DiagnosticsClient: Failed to encode payload: \(summary)")
             return
         }
 

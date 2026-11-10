@@ -84,6 +84,12 @@ public extension CoreDiagnostics {
 }
 
 struct DiagnosticsEvent: Codable, Sendable {
+    static let codingPathSchema: SanitizedError.CodingPathSchema = .object([
+        CodingKeys.eventName.rawValue: .value,
+        CodingKeys.time.rawValue: .value,
+        CodingKeys.eventProperties.rawValue: .dictionary(.value)
+    ])
+
     let eventName: String
     let time: TimeInterval
     let eventProperties: [String: any Sendable]?
@@ -123,6 +129,10 @@ struct DiagnosticsEvent: Codable, Sendable {
 }
 
 struct HistogramStats: Codable {
+    static let codingPathSchema: SanitizedError.CodingPathSchema = .object([
+        "count": .value, "min": .value, "max": .value, "sum": .value
+    ])
+
     var count: Int
     var min: Double
     var max: Double
@@ -141,6 +151,10 @@ struct HistogramStats: Codable {
 }
 
 struct HistogramResult: Codable {
+    static let codingPathSchema: SanitizedError.CodingPathSchema = .object([
+        "count": .value, "min": .value, "max": .value, "avg": .value
+    ])
+
     let count: Int
     let min: Double
     let max: Double
@@ -155,6 +169,13 @@ struct DiagnosticsSnapshot: Sendable {
 }
 
 struct DiagnosticsPayload: Codable {
+    static let codingPathSchema: SanitizedError.CodingPathSchema = .object([
+        "tags": .dictionary(.value),
+        "counters": .dictionary(.value),
+        "histogram": .dictionary(HistogramResult.codingPathSchema),
+        "events": .array(DiagnosticsEvent.codingPathSchema)
+    ])
+
     let tags: [String: String]
     let counters: [String: Int]
     let histogram: [String: HistogramResult]
