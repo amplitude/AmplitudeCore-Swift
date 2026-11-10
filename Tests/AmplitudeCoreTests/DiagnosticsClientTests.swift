@@ -73,8 +73,30 @@ final class DiagnosticsClientTests: XCTestCase {
         await client.initializationTask?.value
         await client.uploadSnapshot(DiagnosticsSnapshot(tags: [:], counters: ["test": 1], histograms: [:], events: []))
         await client.stopFlushTimer()
-        XCTAssertTrue(logger.messages.contains { $0.contains(String(NSURLErrorTimedOut)) })
+        XCTAssertTrue(logger.messages.contains { $0.contains("domain=\(NSURLErrorDomain), code=\(NSURLErrorTimedOut)") })
         XCTAssertFalse(logger.messages.joined().contains("private-error-marker"))
+    }
+
+    func testEncodingFailureLogsCategoryWithoutPayloadOrCodingKeys() async {
+        let logger = CapturingLogger()
+        let marker = "private-histogram-key"
+        let client = DiagnosticsClient(apiKey: Self.testApiKey, instanceName: testInstanceName,
+                                       logger: logger, enabled: true, sampleRate: 1.0,
+                                       remoteConfigClient: nil, httpClient: httpClient)
+        await client.initializationTask?.value
+        await client.stopFlushTimer()
+        httpClient.responseHandler = { request in
+            XCTFail("An unencodable payload must not be uploaded")
+            return TestDiagnosticsHandler.successResponseHandler()(request)
+        }
+        let snapshot = DiagnosticsSnapshot(tags: ["private-tag": "private-value"], counters: [:],
+            histograms: [marker: HistogramStats(count: 1, min: .nan, max: .nan, sum: .nan)], events: [])
+        await client.uploadSnapshot(snapshot)
+        let messages = logger.messages.joined()
+        XCTAssertTrue(messages.contains("Failed to encode payload: EncodingError.invalidValue: codingPathDepth=3"))
+        XCTAssertFalse(messages.contains(marker))
+        XCTAssertFalse(messages.contains("private-value"))
+        XCTAssertFalse(messages.contains(Self.testApiKey))
     }
 
     // MARK: - Initialization Tests

@@ -200,12 +200,12 @@ public actor DiagnosticsClient: CoreDiagnostics {
         var request = HttpUtil.makeJsonRequest(url: url)
         request.httpMethod = "POST"
 
-        let bodyData = try? JSONEncoder().encode(payload)
-        if let bodyData {
+        do {
+            let bodyData = try JSONEncoder().encode(payload)
             request.httpBody = bodyData
             self.logger.debug(message: "DiagnosticsClient: Encoded payload (\(bodyData.count) bytes)")
-        } else {
-            self.logger.error(message: "DiagnosticsClient: Failed to encode payload")
+        } catch {
+            self.logger.error(message: "DiagnosticsClient: Failed to encode payload: \(SanitizedError(sanitizing: error))")
             return
         }
 
@@ -223,7 +223,7 @@ public actor DiagnosticsClient: CoreDiagnostics {
             }
             self.logger.debug(message: "DiagnosticsClient: Uploaded diagnostics")
         } catch {
-            self.logger.error(message: "DiagnosticsClient: Failed to upload diagnostics (error code \((error as NSError).code))")
+            self.logger.error(message: "DiagnosticsClient: Failed to upload diagnostics: \(SanitizedError(sanitizing: error))")
         }
     }
 
