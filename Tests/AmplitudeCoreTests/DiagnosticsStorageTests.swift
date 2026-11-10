@@ -38,6 +38,31 @@ final class DiagnosticsStorageTests: XCTestCase {
 
     // MARK: - Tag Tests
 
+    func testStorageErrorDoesNotLogPathsOrTagValues() async throws {
+        let logger = CapturingLogger()
+        let instanceName = "private-instance-\(UUID().uuidString)"
+        let timestamp = Date().timeIntervalSince1970
+        let storage = DiagnosticsStorage(instanceName: instanceName, sessionStartAt: timestamp,
+                                         logger: logger, shouldStore: true)
+        await storage.setTag(name: "test", value: "private-tag-value")
+        await storage.persistIfNeeded()
+        let directory = try sessionDirectoryURL(instanceName: instanceName, sessionStartAt: timestamp)
+        defer { try? FileManager.default.removeItem(at: directory.deletingLastPathComponent()) }
+        let tagsFile = directory.appendingPathComponent("tags.json")
+        try FileManager.default.removeItem(at: tagsFile)
+        // A nonempty directory cannot be replaced by the atomic tag-file write.
+        try FileManager.default.createDirectory(at: tagsFile, withIntermediateDirectories: false)
+        try Data().write(to: tagsFile.appendingPathComponent("blocker"))
+        await storage.setTag(name: "test", value: "private-updated-tag")
+        await storage.persistIfNeeded()
+        let messages = logger.messages.joined()
+        XCTAssertTrue(messages.contains("Failed to write tags: error code"))
+        XCTAssertFalse(messages.contains(directory.path))
+        XCTAssertFalse(messages.contains(instanceName))
+        XCTAssertFalse(messages.contains("private-tag-value"))
+        XCTAssertFalse(messages.contains("private-updated-tag"))
+    }
+
     func testSetTag() async throws {
         await storage.setTag(name: "test_tag", value: "test_value")
 

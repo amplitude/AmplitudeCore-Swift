@@ -177,7 +177,7 @@ actor DiagnosticsStorage {
         do {
             try removeFiles(includeTags: false)
         } catch {
-            logger.error(message: "DiagnosticsStorage: Failed to remove files during dump: \(error)")
+            logger.error(message: "DiagnosticsStorage: Failed to remove files during dump: error code \((error as NSError).code)")
         }
 
         return snapshot
@@ -234,7 +234,7 @@ actor DiagnosticsStorage {
             }
 
         } catch {
-            logger.error(message: "DiagnosticsStorage: Failed to load historic data: \(error)")
+            logger.error(message: "DiagnosticsStorage: Failed to load historic data: error code \((error as NSError).code)")
         }
 
         return snapshots
@@ -324,7 +324,7 @@ actor DiagnosticsStorage {
         do {
             directory = try createStorageDirectoryIfNeeded()
         } catch {
-            logger.error(message: "DiagnosticsStorage: Failed to create storage directory: \(error)")
+            logger.error(message: "DiagnosticsStorage: Failed to create storage directory: error code \((error as NSError).code)")
             return
         }
 
@@ -333,7 +333,7 @@ actor DiagnosticsStorage {
                 try persist(tags: tags, in: directory)
                 hasUnsavedTags = false
             } catch {
-                logger.error(message: "DiagnosticsStorage: Failed to write tags: \(error)")
+                logger.error(message: "DiagnosticsStorage: Failed to write tags: error code \((error as NSError).code)")
             }
         }
 
@@ -342,7 +342,7 @@ actor DiagnosticsStorage {
                 try persist(counters: counters, in: directory)
                 hasUnsavedCounters = false
             } catch {
-                logger.error(message: "DiagnosticsStorage: Failed to write counters: \(error)")
+                logger.error(message: "DiagnosticsStorage: Failed to write counters: error code \((error as NSError).code)")
             }
         }
 
@@ -351,7 +351,7 @@ actor DiagnosticsStorage {
                 try persist(histograms: histograms, in: directory)
                 hasUnsavedHistograms = false
             } catch {
-                logger.error(message: "DiagnosticsStorage: Failed to write histograms: \(error)")
+                logger.error(message: "DiagnosticsStorage: Failed to write histograms: error code \((error as NSError).code)")
             }
         }
 
@@ -362,7 +362,7 @@ actor DiagnosticsStorage {
                 try append(events: unsavedEvents, to: logUrl)
                 unsavedEvents.removeAll()
             } catch {
-                logger.error(message: "DiagnosticsStorage: Failed to add events: \(error)")
+                logger.error(message: "DiagnosticsStorage: Failed to add events: error code \((error as NSError).code)")
             }
         }
     }

@@ -45,6 +45,38 @@ final class DiagnosticsClientTests: XCTestCase {
         await storage.persistIfNeeded()
     }
 
+    func testUploadDoesNotLogPayloadOrResponseBody() async {
+        let logger = CapturingLogger()
+        let marker = "private-diagnostics-user@example.com"
+        let client = DiagnosticsClient(apiKey: Self.testApiKey, instanceName: testInstanceName,
+                                       logger: logger, enabled: true, sampleRate: 1.0,
+                                       remoteConfigClient: nil, httpClient: httpClient)
+        await client.initializationTask?.value
+        httpClient.responseHandler = { request in
+            XCTAssertTrue(String(data: request.httpBody ?? Data(), encoding: .utf8)?.contains(marker) == true)
+            return (HTTPURLResponse(url: request.url!, statusCode: 400, httpVersion: nil, headerFields: nil)!,
+                    Data(marker.utf8))
+        }
+        await client.uploadSnapshot(DiagnosticsSnapshot(tags: ["private_tag": marker], counters: [:], histograms: [:], events: []))
+        await client.stopFlushTimer()
+        XCTAssertTrue(logger.messages.contains { $0.contains("400") })
+        XCTAssertTrue(logger.messages.contains { $0.contains("Encoded payload") })
+        XCTAssertFalse(logger.messages.joined().contains(marker))
+        XCTAssertFalse(logger.messages.joined().contains(Self.testApiKey))
+    }
+
+    func testUploadDoesNotLogTransportErrorDescription() async {
+        let logger = CapturingLogger()
+        let client = DiagnosticsClient(apiKey: Self.testApiKey, instanceName: testInstanceName,
+                                       logger: logger, enabled: true, sampleRate: 1.0,
+                                       remoteConfigClient: nil, httpClient: SensitiveErrorHttpClient())
+        await client.initializationTask?.value
+        await client.uploadSnapshot(DiagnosticsSnapshot(tags: [:], counters: ["test": 1], histograms: [:], events: []))
+        await client.stopFlushTimer()
+        XCTAssertTrue(logger.messages.contains { $0.contains(String(NSURLErrorTimedOut)) })
+        XCTAssertFalse(logger.messages.joined().contains("private-error-marker"))
+    }
+
     // MARK: - Initialization Tests
 
     func testInitializationWithSampledIn() async throws {
@@ -1200,5 +1232,36 @@ extension CrashCatcher {
         createStorageDirectoryIfNeeded()
         guard let path = crashReportPath else { return }
         try? content.data(using: .utf8)?.write(to: path)
+    }
+}
+
+// Capture messages before OSLog privacy handling, including custom logger consumers.
+final class CapturingLogger: CoreLogger, @unchecked Sendable {
+    private let lock = NSLock()
+    private var captured: [String] = []
+
+    var messages: [String] {
+        lock.lock()
+        defer { lock.unlock() }
+        return captured
+    }
+
+    private func capture(_ message: String) {
+        lock.lock()
+        defer { lock.unlock() }
+        captured.append(message)
+    }
+
+    func error(message: String) { capture(message) }
+    func warn(message: String) { capture(message) }
+    func log(message: String) { capture(message) }
+    func debug(message: String) { capture(message) }
+}
+
+@available(macOS 10.15, iOS 13.0, watchOS 6.0, tvOS 13.0, *)
+private struct SensitiveErrorHttpClient: HttpClient {
+    func send(_ request: URLRequest) async throws -> (Data, URLResponse) {
+        throw NSError(domain: NSURLErrorDomain, code: NSURLErrorTimedOut,
+                      userInfo: [NSLocalizedDescriptionKey: "private-error-marker"])
     }
 }
