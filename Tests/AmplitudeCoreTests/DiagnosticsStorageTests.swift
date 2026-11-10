@@ -38,12 +38,53 @@ final class DiagnosticsStorageTests: XCTestCase {
 
     // MARK: - Tag Tests
 
+    func testStorageErrorDoesNotLogPathsOrTagValues() async throws {
+        let logger = CapturingLogger()
+        let instanceName = "private-instance-\(UUID().uuidString)"
+        let timestamp = Date().timeIntervalSince1970
+        let storage = DiagnosticsStorage(instanceName: instanceName, sessionStartAt: timestamp,
+                                         logger: logger, shouldStore: true)
+        await storage.setTag(name: "test", value: "private-tag-value")
+        await storage.persistIfNeeded()
+        let directory = try sessionDirectoryURL(instanceName: instanceName, sessionStartAt: timestamp)
+        defer { try? FileManager.default.removeItem(at: directory.deletingLastPathComponent()) }
+        let tagsFile = directory.appendingPathComponent("tags.json")
+        try FileManager.default.removeItem(at: tagsFile)
+        // A nonempty directory cannot be replaced by the atomic tag-file write.
+        try FileManager.default.createDirectory(at: tagsFile, withIntermediateDirectories: false)
+        try Data().write(to: tagsFile.appendingPathComponent("blocker"))
+        await storage.setTag(name: "test", value: "private-updated-tag")
+        await storage.persistIfNeeded()
+        let messages = logger.messages.joined()
+        XCTAssertTrue(messages.contains("Failed to write tags:"))
+        XCTAssertTrue(messages.contains("domain=\(NSCocoaErrorDomain), code="))
+        XCTAssertFalse(messages.contains(directory.path))
+        XCTAssertFalse(messages.contains(instanceName))
+        XCTAssertFalse(messages.contains("private-tag-value"))
+        XCTAssertFalse(messages.contains("private-updated-tag"))
+    }
+
     func testSetTag() async throws {
         await storage.setTag(name: "test_tag", value: "test_value")
 
         let tags = await storage.tags
         XCTAssertEqual(tags["test_tag"], "test_value")
         XCTAssertEqual(tags.count, 1)
+    }
+
+    func testHistogramEncodingFailureLogsFieldWithoutMetricName() async throws {
+        let logger = CapturingLogger()
+        let storage = DiagnosticsStorage(instanceName: testInstanceName, sessionStartAt: testTimestamp,
+                                         logger: logger, shouldStore: true)
+        // All persisted stats except sum remain finite after adding NaN to an existing histogram.
+        await storage.recordHistogram(name: "private-metric", value: 1)
+        await storage.recordHistogram(name: "private-metric", value: .nan)
+        await storage.stopPersistenceTimer()
+        await storage.persistIfNeeded()
+        let messages = logger.messages.joined()
+        XCTAssertTrue(messages.contains("Failed to write histograms: EncodingError.invalidValue: codingPath=<key>.sum"))
+        XCTAssertFalse(messages.contains("private-metric"))
+        try await storage.removeAllStoredFiles()
     }
 
     func testSetTags() async throws {

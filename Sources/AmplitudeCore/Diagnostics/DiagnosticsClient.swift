@@ -200,12 +200,13 @@ public actor DiagnosticsClient: CoreDiagnostics {
         var request = HttpUtil.makeJsonRequest(url: url)
         request.httpMethod = "POST"
 
-        let bodyData = try? JSONEncoder().encode(payload)
-        if let bodyData {
+        do {
+            let bodyData = try JSONEncoder().encode(payload)
             request.httpBody = bodyData
-            self.logger.debug(message: "DiagnosticsClient: Encoded payload: \(String(data: bodyData, encoding: .utf8) ?? "Failed to encode payload")")
-        } else {
-            self.logger.error(message: "DiagnosticsClient: Failed to encode payload")
+            self.logger.debug(message: "DiagnosticsClient: Encoded payload (\(bodyData.count) bytes)")
+        } catch {
+            let summary = SanitizedError(sanitizing: error, options: .init(codingPathSchema: DiagnosticsPayload.codingPathSchema))
+            self.logger.error(message: "DiagnosticsClient: Failed to encode payload: \(summary)")
             return
         }
 
@@ -213,22 +214,17 @@ public actor DiagnosticsClient: CoreDiagnostics {
         request.setValue(String(describing: self.sampleRate), forHTTPHeaderField: "X-Client-Sample-Rate")
 
         do {
-            let (data, response) = try await httpClient.data(for: request)
+            let (_, response) = try await httpClient.data(for: request)
             guard let httpResponse = response as? HTTPURLResponse else {
                 return
             }
             guard httpResponse.statusCode >= 200 && httpResponse.statusCode < 300 else {
-                let responseBody = String(data: data, encoding: .utf8)
-                if let responseBody {
-                    self.logger.error(message: "DiagnosticsClient: Failed to upload diagnostics: \(httpResponse.statusCode): \(responseBody)")
-                } else {
-                    self.logger.error(message: "DiagnosticsClient: Failed to upload diagnostics: \(httpResponse.statusCode)")
-                }
+                self.logger.error(message: "DiagnosticsClient: Failed to upload diagnostics: \(httpResponse.statusCode)")
                 return
             }
             self.logger.debug(message: "DiagnosticsClient: Uploaded diagnostics")
         } catch {
-            self.logger.error(message: "DiagnosticsClient: Failed to upload diagnostics: \(error)")
+            self.logger.error(message: "DiagnosticsClient: Failed to upload diagnostics: \(SanitizedError(sanitizing: error))")
         }
     }
 
