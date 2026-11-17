@@ -43,7 +43,7 @@ public actor RemoteConfigClient: NSObject {
         static let euServerURL = "https://sr-client-cfg.eu.amplitude.com/config"
         static let maxRetries = 3
         static let maxRetryDelay: TimeInterval = 8
-        static let minTimeBetweenFetches: TimeInterval = 5 * 60
+        static let minTimeBetweenFetches: TimeInterval = 15 * 60
         static let group = "ios"
     }
 
@@ -71,6 +71,11 @@ public actor RemoteConfigClient: NSObject {
         let lastFetch: Date
     }
 
+    private struct FetchResult: Sendable {
+        let configInfo: RemoteConfigInfo
+        let source: Source
+    }
+
     public typealias RemoteConfig = [String: Sendable]
     public typealias RemoteConfigCallback = @Sendable (RemoteConfig?, Source, Date?) -> Void
     public typealias RemoteConfigSubscription = Sendable
@@ -83,9 +88,10 @@ public actor RemoteConfigClient: NSObject {
     private let storage: RemoteConfigStorage
     private let logger: CoreLogger
     private let maxRetryDelay: TimeInterval
+    private let dateProvider: DateProvider
 
     private var fetchLocalTask: Task<RemoteConfigInfo, Error>
-    private var fetchRemoteTask: Task<RemoteConfigInfo, Error>
+    private var fetchRemoteTask: Task<FetchResult, Error>
     private var callbacks: [CallbackInfo] = []
 
     public init(apiKey: String,
@@ -103,7 +109,7 @@ public actor RemoteConfigClient: NSObject {
         self.init(apiKey: apiKey,
                   serverUrl: serverURL,
                   logger: logger,
-                  storage: RemoteConfigUserDefaultsStorage(instanceName: instanceName),
+                  storage: RemoteConfigUserDefaultsStorage(instanceName: instanceName, apiKey: apiKey, serverZone: serverZone),
                   httpClient: httpClient ?? URLSessionHttpClient())
     }
 
@@ -126,6 +132,7 @@ public actor RemoteConfigClient: NSObject {
          logger: CoreLogger = OSLogger(),
          storage: RemoteConfigStorage = RemoteConfigUserDefaultsStorage(),
          maxRetryDelay: TimeInterval = Config.maxRetryDelay,
+         dateProvider: DateProvider = DateProvider(),
          httpClient: any HttpClient) {
         self.apiKey = apiKey
         self.serverUrl = serverUrl
@@ -133,6 +140,7 @@ public actor RemoteConfigClient: NSObject {
         self.storage = storage
         self.httpClient = httpClient
         self.maxRetryDelay = maxRetryDelay
+        self.dateProvider = dateProvider
 
         fetchLocalTask = Task {
             guard let config = try await storage.fetchConfig() else {
@@ -147,13 +155,17 @@ public actor RemoteConfigClient: NSObject {
 
         super.init()
 
-        fetchRemoteTask = Task.detached { [httpClient = self.httpClient, serverUrl, apiKey, maxRetryDelay, weak self] in
+        fetchRemoteTask = Task.detached { [fetchLocalTask, httpClient = self.httpClient, serverUrl, apiKey, maxRetryDelay, dateProvider, weak self] in
+            if let cached = try? await fetchLocalTask.value, Self.isFresh(cached, at: dateProvider.getDate()) {
+                return FetchResult(configInfo: cached, source: .cache)
+            }
             let config = try await Self.fetch(httpClient: httpClient,
                                               serverUrl: serverUrl,
                                               apiKey: apiKey,
-                                              maxRetryDelay: maxRetryDelay)
+                                              maxRetryDelay: maxRetryDelay,
+                                              dateProvider: dateProvider)
             try? await self?.storage.setConfig(config)
-            return config
+            return FetchResult(configInfo: config, source: .remote)
         }
     }
 
@@ -190,7 +202,8 @@ public actor RemoteConfigClient: NSObject {
                 await withThrowingTaskGroup(of: (configInfo: RemoteConfigInfo, source: Source).self) { [fetchLocalTask, fetchRemoteTask] taskGroup in
                     // send remote first, if it's already complete we can skip the cached response
                     taskGroup.addTask {
-                        return (try await fetchRemoteTask.value, .remote)
+                        let result = try await fetchRemoteTask.value
+                        return (result.configInfo, result.source)
                     }
                     await Task.yield()
                     taskGroup.addTask {
@@ -199,6 +212,10 @@ public actor RemoteConfigClient: NSObject {
                     var didSendCallback = false
                     while let taskGroupResult = await taskGroup.nextResult() {
                         if case .success(let result) = taskGroupResult {
+                            // Both tasks may resolve to the same persisted cache.
+                            if case .cache = result.source, didSendCallback {
+                                continue
+                            }
                             didSendCallback = true
 
                             await self?.sendCallback(callbackInfo, configInfo: result.configInfo, source: result.source)
@@ -233,7 +250,7 @@ public actor RemoteConfigClient: NSObject {
                     let remoteConfig = try await fetchTask.value
                     timeoutTask.cancel()
                     if let self {
-                        await sendCallback(callbackInfo, configInfo: remoteConfig, source: .remote)
+                        await sendCallback(callbackInfo, configInfo: remoteConfig.configInfo, source: remoteConfig.source)
                     }
                 } catch {
                     guard let self else {
@@ -271,16 +288,19 @@ public actor RemoteConfigClient: NSObject {
 
     /**
      Requests that the Remote config client updates its configs.
+     Successful configs are reused for fifteen minutes, including persisted configs
+     loaded by a newly created client.
      */
     public nonisolated func updateConfigs() {
         Task.detached { [weak self] in
-            guard let fetchRemoteTask = await self?.fetchRemoteTask else {
+            guard let fetchRemoteTask = await self?.fetchRemoteTask,
+                  let dateProvider = self?.dateProvider else {
                 return
             }
             // wait for any existing fetches to complete
             switch await fetchRemoteTask.result {
-            case .success(let configInfo):
-                guard configInfo.lastFetch.timeIntervalSinceNow < -Config.minTimeBetweenFetches else {
+            case .success(let result):
+                guard !Self.isFresh(result.configInfo, at: dateProvider.getDate()) else {
                     self?.logger.debug(message: "[RemoteConfigClient] Skipping updateConfigs: Too recent")
                     return
                 }
@@ -304,27 +324,28 @@ public actor RemoteConfigClient: NSObject {
                         }
                     }
 
-                    await self.sendCallback(callback, configInfo: updatedRemoteConfig, source: .remote)
+                    await self.sendCallback(callback, configInfo: updatedRemoteConfig.configInfo, source: updatedRemoteConfig.source)
                 }
             }
         }
     }
 
     @discardableResult
-    private func _updateConfigs() -> Task<RemoteConfigInfo, Error> {
-        fetchRemoteTask = Task.detached { [httpClient = self.httpClient, serverUrl, apiKey, maxRetryDelay, weak self] in
+    private func _updateConfigs() -> Task<FetchResult, Error> {
+        fetchRemoteTask = Task.detached { [httpClient = self.httpClient, serverUrl, apiKey, maxRetryDelay, dateProvider, weak self] in
             let config = try await Self.fetch(httpClient: httpClient,
                                               serverUrl: serverUrl,
                                               apiKey: apiKey,
-                                              maxRetryDelay: maxRetryDelay)
+                                              maxRetryDelay: maxRetryDelay,
+                                              dateProvider: dateProvider)
             try? await self?.storage.setConfig(config)
-            return config
+            return FetchResult(configInfo: config, source: .remote)
         }
         return fetchRemoteTask
     }
 
     private func sendCallback(_ callbackInfo: CallbackInfo, configInfo: RemoteConfigInfo?, source: Source) {
-        callbackInfo.lastCallbackTime = Date()
+        callbackInfo.lastCallbackTime = dateProvider.getDate()
 
         var filteredConfig: RemoteConfig?
         if let key = callbackInfo.key {
@@ -340,18 +361,25 @@ public actor RemoteConfigClient: NSObject {
 
     // MARK: - Fetch
 
+    private static func isFresh(_ configInfo: RemoteConfigInfo, at date: Date) -> Bool {
+        return abs(configInfo.lastFetch.timeIntervalSince(date)) < Config.minTimeBetweenFetches
+    }
+
     private static func fetch(httpClient: any HttpClient,
                               serverUrl: String,
                               apiKey: String,
-                              maxRetryDelay: TimeInterval) async throws -> RemoteConfigInfo {
+                              maxRetryDelay: TimeInterval,
+                              dateProvider: DateProvider) async throws -> RemoteConfigInfo {
         return try await fetch(httpClient: httpClient,
                                request: try makeRequest(serverUrl: serverUrl, apiKey: apiKey),
-                               maxRetryDelay: maxRetryDelay)
+                               maxRetryDelay: maxRetryDelay,
+                               dateProvider: dateProvider)
     }
 
     private static func fetch(httpClient: any HttpClient,
                               request: URLRequest,
                               maxRetryDelay: TimeInterval,
+                              dateProvider: DateProvider,
                               retries: Int = Config.maxRetries) async throws -> RemoteConfigInfo {
         let (data, response) = try await httpClient.data(for: request)
 
@@ -360,7 +388,7 @@ public actor RemoteConfigClient: NSObject {
            let rawJson = try? JSONSerialization.jsonObject(with: data, options: []),
            let json = Self.normalizeJSON(json: rawJson) as? [String: Sendable],
            let config = json["configs"] as? [String: Sendable] {
-            return RemoteConfigInfo(config: config, lastFetch: Date())
+            return RemoteConfigInfo(config: config, lastFetch: dateProvider.getDate())
         }
 
         let shouldRetry: Bool
@@ -389,6 +417,7 @@ public actor RemoteConfigClient: NSObject {
             return try await fetch(httpClient: httpClient,
                                    request: request,
                                    maxRetryDelay: maxRetryDelay,
+                                   dateProvider: dateProvider,
                                    retries: retries - 1)
         } else {
             throw RemoteConfigError.badResponse
@@ -457,11 +486,16 @@ final class RemoteConfigUserDefaultsStorage: RemoteConfigStorage, @unchecked Sen
 
     private let userDefaults: UserDefaults?
 
-    init(instanceName: String? = nil) {
+    init(instanceName: String? = nil, apiKey: String? = nil, serverZone: ServerZone = .US) {
         var suiteName = "com.amplitude.remoteconfig.cache"
         if let instanceName {
             suiteName += "."
             suiteName += instanceName
+        }
+        // A different project or server zone must never inherit a cached fetch's cooldown.
+        // Legacy unscoped caches cannot establish ownership and are not reused here.
+        if let apiKey {
+            suiteName += ".\(serverZone.rawValue).\(Data(apiKey.utf8).base64EncodedString())"
         }
         userDefaults = UserDefaults(suiteName: suiteName)
     }
