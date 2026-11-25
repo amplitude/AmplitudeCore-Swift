@@ -51,7 +51,7 @@ enum AppEnvironment: String, Sendable {
 
     private static let detectedReleaseBuild: Bool = {
 #if DEBUG
-        // Source integration (SPM/CocoaPods) compiles the SDK with the host
+        // Source integration (SPM) compiles the SDK with the host
         // app's build configuration; a debug host means a debug SDK.
         return false
 #elseif targetEnvironment(simulator)

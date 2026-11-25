@@ -25,20 +25,6 @@ module.exports = {
         {
           "replacements": [
             {
-              "files": ["AmplitudeCore.podspec"],
-              "from": "amplitude_core_version = \".*\"",
-              "to": "amplitude_core_version = \"${nextRelease.version}\"",
-              "results": [
-                {
-                  "file": "AmplitudeCore.podspec",
-                  "hasChanged": true,
-                  "numMatches": 1,
-                  "numReplacements": 1
-                }
-              ],
-              "countMatches": true
-            },
-            {
               "files": ["Package.swift", "Package@swift-5.9.swift", "Package@swift-6.2.swift", "Package@swift-6.4.swift"],
               "from": "https://github.com/amplitude/AmplitudeCore-Swift/releases/download/v.*/AmplitudeCore",
               "to": "https://github.com/amplitude/AmplitudeCore-Swift/releases/download/v${nextRelease.version}/AmplitudeCore",
@@ -91,11 +77,8 @@ module.exports = {
         "prepareCmd": "cat docs/Carthage/AmplitudeCore.json | jq --arg RELEASE '${nextRelease.version}' '. + {$RELEASE: \"https://github.com/amplitude/AmplitudeCore-Swift/releases/download/v\\($RELEASE)/AmplitudeCore.zip\"}' > docs/Carthage/AmplitudeCore.json.tmp && mv docs/Carthage/AmplitudeCore.json.tmp docs/Carthage/AmplitudeCore.json"
       }],
       ["@semantic-release/git", {
-        "assets": ["AmplitudeCore.podspec", "CHANGELOG.md", "Package.swift", "Package@swift-5.9.swift", "Package@swift-6.2.swift", "Package@swift-6.4.swift", "docs/Carthage/AmplitudeCore.json", "Sources/AmplitudeCore/Constants.swift"],
+        "assets": ["CHANGELOG.md", "Package.swift", "Package@swift-5.9.swift", "Package@swift-6.2.swift", "Package@swift-6.4.swift", "docs/Carthage/AmplitudeCore.json", "Sources/AmplitudeCore/Constants.swift"],
         "message": "chore(release): ${nextRelease.version} [skip ci]\n\n${nextRelease.notes}"
       }],
-       ...(process.env.SKIP_COCOAPODS === "true" ? [] : [["@semantic-release/exec", {
-         "publishCmd": "pod trunk push AmplitudeCore.podspec --allow-warnings",
-       }]]),
     ],
   }
